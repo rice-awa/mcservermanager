@@ -9,7 +9,11 @@
     "start": "node dist/index.js",
     "clean": "rimraf dist"
   },
-  "keywords": ["minecraft", "server", "manager"],
+  "keywords": [
+    "minecraft",
+    "server",
+    "manager"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -24,6 +28,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "rcon-client": "^4.2.5",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
   }
 }
