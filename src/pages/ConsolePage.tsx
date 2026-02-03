@@ -3,71 +3,14 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { ConsoleMessage } from '@/types'
-
-const historyStorageKey = 'mcservermanager-console-history'
-const maxHistorySize = 50
-
-const commandCatalog = [
-  'help',
-  'list',
-  'say',
-  'time set day',
-  'time set night',
-  'weather clear',
-  'weather rain',
-  'weather thunder',
-  'gamemode survival',
-  'gamemode creative',
-  'whitelist add',
-  'whitelist remove',
-  'kick',
-  'ban',
-  'pardon',
-  'stop',
-  'save-all',
-  'tp',
-]
-
-const initialMessages: ConsoleMessage[] = [
-  {
-    id: 'init-1',
-    timestamp: Date.now() - 1000 * 60 * 3,
-    type: 'system',
-    content: '控制台已就绪，等待服务器连接。',
-  },
-  {
-    id: 'init-2',
-    timestamp: Date.now() - 1000 * 60 * 2,
-    type: 'output',
-    content: '上次自动保存完成。',
-  },
-  {
-    id: 'init-3',
-    timestamp: Date.now() - 1000 * 30,
-    type: 'chat',
-    content: '[Steve] 大家好，我上线了！',
-  },
-]
-
-const messageTypeLabels: Record<ConsoleMessage['type'], string> = {
-  system: '系统',
-  command: '命令',
-  output: '输出',
-  error: '错误',
-  chat: '聊天',
-  join: '加入',
-  leave: '离开',
-}
-
-const messageTypeStyles: Record<ConsoleMessage['type'], string> = {
-  system: 'text-muted-foreground',
-  command: 'text-sky-500',
-  output: 'text-foreground',
-  error: 'text-destructive',
-  chat: 'text-emerald-500',
-  join: 'text-emerald-400',
-  leave: 'text-amber-500',
-}
+import {
+  consoleCommandCatalog,
+  consoleHistoryStorageKey,
+  consoleMaxHistorySize,
+  consoleMessageTypeLabels,
+  consoleMessageTypeStyles,
+  getConsoleInitialMessages,
+} from '@/services/mock'
 
 const createId = (() => {
   let seed = 0
@@ -93,7 +36,7 @@ function getStoredHistory(): string[] {
     return []
   }
   try {
-    const stored = window.localStorage.getItem(historyStorageKey)
+    const stored = window.localStorage.getItem(consoleHistoryStorageKey)
     if (!stored) {
       return []
     }
@@ -105,7 +48,9 @@ function getStoredHistory(): string[] {
 }
 
 export default function ConsolePage() {
-  const [messages, setMessages] = useState<ConsoleMessage[]>(initialMessages)
+  const [messages, setMessages] = useState<ConsoleMessage[]>(
+    getConsoleInitialMessages
+  )
   const [inputValue, setInputValue] = useState('')
   const [autoScroll, setAutoScroll] = useState(true)
   const [history, setHistory] = useState<string[]>(getStoredHistory)
@@ -118,7 +63,7 @@ export default function ConsolePage() {
     if (typeof window === 'undefined') {
       return
     }
-    window.localStorage.setItem(historyStorageKey, JSON.stringify(history))
+    window.localStorage.setItem(consoleHistoryStorageKey, JSON.stringify(history))
   }, [history])
 
   useEffect(() => {
@@ -145,7 +90,7 @@ export default function ConsolePage() {
     if (!commandQuery) {
       return []
     }
-    return commandCatalog.filter((command) =>
+    return consoleCommandCatalog.filter((command) =>
       command.toLowerCase().startsWith(commandQuery)
     )
   }, [commandQuery])
@@ -171,7 +116,7 @@ export default function ConsolePage() {
 
   const pushHistory = (command: string) => {
     setHistory((prev) => {
-      const next = [...prev, command].slice(-maxHistorySize)
+      const next = [...prev, command].slice(-consoleMaxHistorySize)
       return next
     })
   }
@@ -336,12 +281,12 @@ export default function ConsolePage() {
                   {formatTimestamp(message.timestamp)}
                 </span>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                  {messageTypeLabels[message.type]}
+                  {consoleMessageTypeLabels[message.type]}
                 </span>
                 <span
                   className={cn(
                     'flex-1 whitespace-pre-wrap',
-                    messageTypeStyles[message.type]
+                    consoleMessageTypeStyles[message.type]
                   )}
                 >
                   {message.type === 'command'
@@ -392,7 +337,7 @@ export default function ConsolePage() {
               )}
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>历史记录保存最近 {maxHistorySize} 条命令</span>
+              <span>历史记录保存最近 {consoleMaxHistorySize} 条命令</span>
               <button
                 type="button"
                 onClick={handleSend}

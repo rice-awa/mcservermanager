@@ -13,12 +13,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { ServerStats, TPSData } from '@/types'
+import {
+  dashboardDefaultRefreshInterval,
+  dashboardRefreshIntervals,
+  getInitialDashboardState,
+} from '@/services/mock'
 
 type MetricPoint = { timestamp: number; value: number }
 type MemoryPoint = { timestamp: number; used: number; allocated: number }
-
-const historyLength = 20
-const defaultRefreshInterval = 10000
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
@@ -36,78 +38,6 @@ const formatTimeShort = (timestamp: number) =>
 const formatNumber = (value: number, digits = 2) => value.toFixed(digits)
 
 const formatMemory = (value: number) => `${formatNumber(value, 1)} GB`
-
-const createHistory = (
-  length: number,
-  base: number,
-  variance: number,
-  min: number,
-  max: number,
-  step = defaultRefreshInterval
-): MetricPoint[] => {
-  const now = Date.now()
-  return Array.from({ length }, (_, index) => {
-    const timestamp = now - (length - 1 - index) * step
-    const value = clamp(base + randomDelta(variance), min, max)
-    return { timestamp, value }
-  })
-}
-
-const createMemoryHistory = (
-  length: number,
-  usedBase: number,
-  allocatedBase: number,
-  max: number,
-  step = defaultRefreshInterval
-): MemoryPoint[] => {
-  const now = Date.now()
-  return Array.from({ length }, (_, index) => {
-    const timestamp = now - (length - 1 - index) * step
-    const used = clamp(usedBase + randomDelta(0.6), 1, max)
-    const allocated = clamp(allocatedBase + randomDelta(0.6), used, max)
-    return { timestamp, used, allocated }
-  })
-}
-
-const initialStats: ServerStats = {
-  tps: 19.6,
-  cpu: 37,
-  memory: {
-    used: 6.4,
-    max: 16,
-    allocated: 8.2,
-  },
-  onlinePlayers: 8,
-  maxPlayers: 20,
-  loadedChunks: 5231,
-  version: '1.20.4',
-  gamemode: '生存',
-  difficulty: '普通',
-}
-
-const initialTpsHistory: TPSData[] = createHistory(
-  historyLength,
-  19.2,
-  0.6,
-  15,
-  20
-).map((item) => ({ timestamp: item.timestamp, tps: item.value }))
-
-const initialCpuHistory = createHistory(historyLength, 42, 6, 10, 95)
-
-const initialMemoryHistory = createMemoryHistory(
-  historyLength,
-  6.2,
-  8.1,
-  initialStats.memory.max
-)
-
-const refreshIntervals = [
-  { label: '5 秒', value: 5000 },
-  { label: '10 秒', value: 10000 },
-  { label: '30 秒', value: 30000 },
-  { label: '60 秒', value: 60000 },
-]
 
 function StatCard({
   title,
@@ -137,13 +67,21 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<ServerStats>(initialStats)
-  const [tpsHistory, setTpsHistory] = useState<TPSData[]>(initialTpsHistory)
-  const [cpuHistory, setCpuHistory] = useState<MetricPoint[]>(initialCpuHistory)
-  const [memoryHistory, setMemoryHistory] =
-    useState<MemoryPoint[]>(initialMemoryHistory)
+  const initialDashboardState = useMemo(() => getInitialDashboardState(), [])
+  const [stats, setStats] = useState<ServerStats>(
+    initialDashboardState.stats
+  )
+  const [tpsHistory, setTpsHistory] = useState<TPSData[]>(
+    initialDashboardState.tpsHistory
+  )
+  const [cpuHistory, setCpuHistory] = useState<MetricPoint[]>(
+    initialDashboardState.cpuHistory
+  )
+  const [memoryHistory, setMemoryHistory] = useState<MemoryPoint[]>(
+    initialDashboardState.memoryHistory
+  )
   const [refreshInterval, setRefreshInterval] = useState(
-    defaultRefreshInterval
+    dashboardDefaultRefreshInterval
   )
   const [lastUpdated, setLastUpdated] = useState(Date.now())
 
@@ -247,7 +185,7 @@ export default function DashboardPage() {
             onChange={(event) => setRefreshInterval(Number(event.target.value))}
             className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
           >
-            {refreshIntervals.map((item) => (
+            {dashboardRefreshIntervals.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>
@@ -436,7 +374,12 @@ export default function DashboardPage() {
               </span>
             </div>
             <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              自动刷新间隔：{refreshIntervals.find((item) => item.value === refreshInterval)?.label}
+              自动刷新间隔：
+              {
+                dashboardRefreshIntervals.find(
+                  (item) => item.value === refreshInterval
+                )?.label
+              }
             </div>
           </div>
         </div>

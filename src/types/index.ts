@@ -5,6 +5,7 @@ export interface ServerConfig {
   host: string
   port: number
   password: string
+  timeout?: number
   sparkApiUrl?: string // Spark Mod API 地址
 }
 
