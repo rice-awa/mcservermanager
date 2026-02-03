@@ -22,6 +22,11 @@ const defaultConfig: AppConfig = {
     updateInterval: 5000,
     historySize: 100,
   },
+  spark: {
+    preferRcon: true,           // 优先使用 RCON 方案
+    reportCacheTTL: 30000,      // 报告缓存 30 秒
+    timeout: 10000,             // API 请求超时 10 秒
+  },
 };
 
 /**
@@ -71,6 +76,11 @@ export function loadConfig(): AppConfig {
     stats: {
       updateInterval: getEnvNumber('STATS_UPDATE_INTERVAL', defaultConfig.stats.updateInterval),
       historySize: getEnvNumber('STATS_HISTORY_SIZE', defaultConfig.stats.historySize),
+    },
+    spark: {
+      preferRcon: getEnv('SPARK_PREFER_RCON', 'true') === 'true',
+      reportCacheTTL: getEnvNumber('SPARK_REPORT_CACHE_TTL', defaultConfig.spark.reportCacheTTL),
+      timeout: getEnvNumber('SPARK_TIMEOUT', defaultConfig.spark.timeout),
     },
   };
 }

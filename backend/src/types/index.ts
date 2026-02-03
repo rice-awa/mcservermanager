@@ -221,6 +221,83 @@ export interface PlayerQueryParams {
   sortOrder?: 'asc' | 'desc';
 }
 
+// ============ Spark API 类型 ============
+
+/**
+ * Spark TPS 统计窗口
+ */
+export interface SparkTPSStats {
+  last5s: number;
+  last10s: number;
+  last1m: number;
+  last5m: number;
+  last15m: number;
+}
+
+/**
+ * Spark MSPT 统计（毫秒/tick）
+ */
+export interface SparkMSPTStats {
+  min: number;
+  median: number;
+  percentile95: number;
+  max: number;
+}
+
+/**
+ * Spark CPU 统计（百分比）
+ */
+export interface SparkCPUStats {
+  process: {
+    last10s: number;
+    last1m: number;
+    last15m: number;
+  };
+  system: {
+    last10s: number;
+    last1m: number;
+    last15m: number;
+  };
+}
+
+/**
+ * Spark 内存统计（MB）
+ */
+export interface SparkMemoryStats {
+  used: number;
+  allocated: number;
+  max: number;
+}
+
+/**
+ * Spark 磁盘统计（GB）
+ */
+export interface SparkDiskStats {
+  used: number;
+  total: number;
+}
+
+/**
+ * 完整 Spark 健康报告
+ */
+export interface SparkHealthReport {
+  tps: SparkTPSStats;
+  mspt: SparkMSPTStats;
+  cpu: SparkCPUStats;
+  memory: SparkMemoryStats;
+  disk?: SparkDiskStats;
+  timestamp: number;
+}
+
+/**
+ * Spark 配置
+ */
+export interface SparkConfig {
+  preferRcon: boolean;       // 优先使用 RCON 方案
+  reportCacheTTL: number;    // 报告缓存时间（毫秒）
+  timeout: number;           // API 请求超时（毫秒）
+}
+
 // ============ 内部使用类型 ============
 
 /**
@@ -265,6 +342,7 @@ export interface AppConfig {
     updateInterval: number;
     historySize: number;
   };
+  spark: SparkConfig;
 }
 
 /**
