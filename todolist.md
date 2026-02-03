@@ -65,6 +65,7 @@ npx shadcn@latest add button card input textarea label select
 npx shadcn@latest add badge separator scroll-area tabs toast
 npx shadcn@latest add dropdown-menu dialog table avatar
 ```
+-------------------------------------
 
 #### 步骤 7: 配置全局样式
 ☐在 `src/index.css` 中配置 CSS 变量
