@@ -91,13 +91,17 @@ export class StatsService {
       ]);
 
       // 构建状态数据
-      const cpuUsage =
-        healthReport?.cpu.process.last1m ??
-        healthReport?.cpu.system.last1m ??
-        0;
+      const cpuProcess = healthReport?.cpu.process.last1m ?? 0;
+      const cpuSystem = healthReport?.cpu.system.last1m ?? 0;
+      const cpuUsage = cpuProcess || cpuSystem;
+      const normalizedCpu = cpuUsage > 1 ? cpuUsage : cpuUsage * 100;
+      const normalizedProcess = cpuProcess > 1 ? cpuProcess : cpuProcess * 100;
+      const normalizedSystem = cpuSystem > 1 ? cpuSystem : cpuSystem * 100;
       const stats: ServerStats = {
         tps: healthReport?.tps.last1m ?? 20,
-        cpu: cpuUsage,
+        cpu: normalizedCpu,
+        cpuProcess: normalizedProcess,
+        cpuSystem: normalizedSystem,
         memory: {
           used: healthReport?.memory.used ?? 0,
           max: healthReport?.memory.max ?? 0,
@@ -261,7 +265,8 @@ export class StatsService {
     const history = this.statsHistory.get(serverId) ?? [];
     return history.slice(-limit).map((record) => ({
       timestamp: record.timestamp,
-      value: record.stats.cpu,
+      process: record.stats.cpuProcess,
+      system: record.stats.cpuSystem,
     }));
   }
 

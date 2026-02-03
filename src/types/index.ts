@@ -29,6 +29,8 @@ export interface Player {
 export interface ServerStats {
   tps: number
   cpu: number // CPU 占用率 (0-100)
+  cpuProcess: number // 进程 CPU 占用率 (0-100)
+  cpuSystem: number // 系统 CPU 占用率 (0-100)
   memory: {
     used: number
     max: number

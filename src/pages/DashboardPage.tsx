@@ -23,6 +23,8 @@ import { useServerState } from '@/hooks/use-server'
 const emptyStats: ServerStats = {
   tps: 0,
   cpu: 0,
+  cpuProcess: 0,
+  cpuSystem: 0,
   memory: {
     used: 0,
     max: 0,
@@ -36,7 +38,7 @@ const emptyStats: ServerStats = {
   difficulty: 'Unknown',
 }
 
-type MetricPoint = { timestamp: number; value: number }
+type CpuHistoryPoint = { timestamp: number; process: number; system: number }
 type MemoryPoint = { timestamp: number; used: number; allocated: number }
 
 const formatTimeShort = (timestamp: number) =>
@@ -57,11 +59,6 @@ const formatTimeLabel: TooltipProps<number, string>['labelFormatter'] = (
 const formatTpsTooltip: TooltipProps<number, string>['formatter'] = (value) => [
   typeof value === 'number' ? value.toFixed(2) : '0',
   'TPS',
-]
-
-const formatCpuTooltip: TooltipProps<number, string>['formatter'] = (value) => [
-  `${typeof value === 'number' ? value.toFixed(1) : '0'}%`,
-  'CPU',
 ]
 
 const formatMemoryTooltip: TooltipProps<number, string>['formatter'] = (
@@ -108,7 +105,7 @@ export default function DashboardPage() {
   const { activeServerId, activeServerName } = useServerState()
   const [stats, setStats] = useState<ServerStats>(emptyStats)
   const [tpsHistory, setTpsHistory] = useState<TPSData[]>([])
-  const [cpuHistory, setCpuHistory] = useState<MetricPoint[]>([])
+  const [cpuHistory, setCpuHistory] = useState<CpuHistoryPoint[]>([])
   const [memoryHistory, setMemoryHistory] = useState<MemoryPoint[]>([])
   const [refreshInterval, setRefreshInterval] = useState(
     dashboardDefaultRefreshInterval
@@ -128,14 +125,14 @@ export default function DashboardPage() {
   }, [stats.tps])
 
   const cpuStatus = useMemo(() => {
-    if (stats.cpu < 60) {
+    if (stats.cpuSystem < 60) {
       return { label: '正常', color: 'text-emerald-500' }
     }
-    if (stats.cpu < 80) {
+    if (stats.cpuSystem < 80) {
       return { label: '偏高', color: 'text-amber-500' }
     }
     return { label: '高负载', color: 'text-destructive' }
-  }, [stats.cpu])
+  }, [stats.cpuSystem])
 
   const memoryUsagePercent = useMemo(() => {
     if (stats.memory.max <= 0) {
@@ -190,7 +187,15 @@ export default function DashboardPage() {
         appendHistory(prev, { timestamp: now, tps: nextStats.tps }, limit)
       )
       setCpuHistory((prev) =>
-        appendHistory(prev, { timestamp: now, value: nextStats.cpu }, limit)
+        appendHistory(
+          prev,
+          {
+            timestamp: now,
+            process: nextStats.cpuProcess,
+            system: nextStats.cpuSystem,
+          },
+          limit
+        )
       )
       setMemoryHistory((prev) =>
         appendHistory(
@@ -282,8 +287,14 @@ export default function DashboardPage() {
           className={tpsStatus.color}
         />
         <StatCard
-          title="CPU"
-          value={`${formatNumber(stats.cpu, 1)}%`}
+          title="CPU(进程)"
+          value={`${formatNumber(stats.cpuProcess, 1)}%`}
+          hint="Java 进程"
+          className="text-sky-500"
+        />
+        <StatCard
+          title="CPU(系统)"
+          value={`${formatNumber(stats.cpuSystem, 1)}%`}
           hint={cpuStatus.label}
           className={cpuStatus.color}
         />
@@ -294,11 +305,13 @@ export default function DashboardPage() {
           )}`}
           hint={`${formatNumber(memoryUsagePercent, 1)}%`}
         />
-        <StatCard
-          title="在线玩家"
-          value={`${stats.onlinePlayers} / ${stats.maxPlayers}`}
-          hint={loading ? '更新中...' : undefined}
-        />
+      </div>
+
+      <div className="rounded-lg border bg-card p-4">
+        <div className="text-sm text-muted-foreground">在线玩家</div>
+        <div className="mt-2 text-2xl font-semibold">
+          {stats.onlinePlayers} / {stats.maxPlayers}
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -345,15 +358,27 @@ export default function DashboardPage() {
                 />
                 <YAxis domain={[0, 100]} className="text-xs" stroke="currentColor" />
                 <Tooltip
-                  formatter={formatCpuTooltip}
+                  formatter={(value, name) => [
+                    `${typeof value === 'number' ? value.toFixed(1) : '0'}%`,
+                    name === 'process' ? '进程' : '系统',
+                  ]}
                   labelFormatter={formatTimeLabel}
                 />
                 <Area
                   type="monotone"
-                  dataKey="value"
+                  dataKey="process"
                   stroke="hsl(var(--primary))"
-                  fillOpacity={1}
+                  fillOpacity={0.2}
                   fill="url(#cpuGradient)"
+                  name="process"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="system"
+                  stroke="hsl(var(--destructive))"
+                  fillOpacity={0.15}
+                  fill="url(#cpuGradient)"
+                  name="system"
                 />
               </AreaChart>
             </ResponsiveContainer>

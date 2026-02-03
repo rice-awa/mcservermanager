@@ -47,7 +47,7 @@ export interface PlayerQueryParams {
 export interface DashboardHistoryData {
   stats: ServerStats
   tpsHistory: TPSData[]
-  cpuHistory: Array<{ timestamp: number; value: number }>
+  cpuHistory: Array<{ timestamp: number; process: number; system: number }>
   memoryHistory: Array<{ timestamp: number; used: number; allocated: number }>
 }
 

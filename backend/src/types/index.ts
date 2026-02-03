@@ -52,7 +52,9 @@ export interface Player {
  */
 export interface ServerStats {
   tps: number;
-  cpu: number;            // CPU 使用率百分比
+  cpu: number;            // CPU 使用率百分比（兼容）
+  cpuProcess: number;     // 进程 CPU 使用率百分比
+  cpuSystem: number;      // 系统 CPU 使用率百分比
   memory: {
     used: number;         // 已使用内存（MB）
     max: number;          // 最大内存（MB）
@@ -79,7 +81,8 @@ export interface TPSData {
  */
 export interface CPUData {
   timestamp: number;
-  value: number;
+  process: number;
+  system: number;
 }
 
 /**

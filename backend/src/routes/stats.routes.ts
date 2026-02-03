@@ -85,6 +85,8 @@ router.get('/history', async (req: Request, res: Response) => {
       stats: latestStats ?? {
         tps: 20,
         cpu: 0,
+        cpuProcess: 0,
+        cpuSystem: 0,
         memory: { used: 0, max: 0, allocated: 0 },
         onlinePlayers: 0,
         maxPlayers: 20,
