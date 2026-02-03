@@ -83,6 +83,30 @@ export default function SettingsPage() {
     [configs, activeServerId]
   )
 
+  const connectServerById = useCallback((serverId: string) => {
+    setConnectionStatus('connecting', '正在连接服务器...')
+    setStatusMessage('正在连接服务器...')
+    setLastAttempt(Date.now())
+    socketService.connect(undefined, tokens?.socketToken)
+    socketService.connectToServer(serverId)
+    setActiveServer(serverId)
+  }, [tokens?.socketToken])
+
+  const scheduleReconnect = useCallback((serverId: string) => {
+    if (!autoReconnect) {
+      return
+    }
+    if (reconnectTimerRef.current) {
+      window.clearTimeout(reconnectTimerRef.current)
+    }
+    setReconnectPending(true)
+    reconnectTimerRef.current = window.setTimeout(() => {
+      setReconnectPending(false)
+      reconnectTimerRef.current = null
+      connectServerById(serverId)
+    }, 5000)
+  }, [autoReconnect, connectServerById])
+
   useEffect(() => {
     socketService.connect(undefined, tokens?.socketToken)
 
@@ -192,21 +216,6 @@ export default function SettingsPage() {
     serverDir: form.serverDir?.trim() || undefined,
   })
 
-  const scheduleReconnect = useCallback((serverId: string) => {
-    if (!autoReconnect) {
-      return
-    }
-    if (reconnectTimerRef.current) {
-      window.clearTimeout(reconnectTimerRef.current)
-    }
-    setReconnectPending(true)
-    reconnectTimerRef.current = window.setTimeout(() => {
-      setReconnectPending(false)
-      reconnectTimerRef.current = null
-      connectServerById(serverId)
-    }, 5000)
-  }, [autoReconnect, connectServerById])
-
   const handleTestConnection = async () => {
     setRequestPending(true)
     setConnectionStatus('connecting', '测试连接中...')
@@ -255,15 +264,6 @@ export default function SettingsPage() {
     } finally {
       setRequestPending(false)
     }
-  }
-
-  const connectServerById = (serverId: string) => {
-    setConnectionStatus('connecting', '正在连接服务器...')
-    setStatusMessage('正在连接服务器...')
-    setLastAttempt(Date.now())
-    socketService.connect(undefined, tokens?.socketToken)
-    socketService.connectToServer(serverId)
-    setActiveServer(serverId)
   }
 
   const handleConnectServer = async () => {

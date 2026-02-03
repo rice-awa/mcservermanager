@@ -90,24 +90,27 @@ export default function ConsolePage() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
+  const appendMessage = useCallback((message: ConsoleMessage) => {
+    setMessages((prev) => [...prev, message])
+  }, [])
+
   useEffect(() => {
     socketService.connect(undefined, tokens?.socketToken)
 
-    const handleCommandOutput = (data: {
-      type: string
-      payload: { message: ConsoleMessage }
-    }) => {
+    const handleCommandOutput = (...args: unknown[]) => {
+      const data = args[0] as { type: string; payload: { message: ConsoleMessage } }
       if (data?.payload?.message) {
         appendMessage(data.payload.message)
       }
     }
 
-    const handleLegacyMessage = (data: {
-      id: string
-      type: ConsoleMessage['type']
-      content: string
-      timestamp: string | Date
-    }) => {
+    const handleLegacyMessage = (...args: unknown[]) => {
+      const data = args[0] as {
+        id: string
+        type: ConsoleMessage['type']
+        content: string
+        timestamp: string | Date
+      }
       const timestamp =
         typeof data.timestamp === 'string'
           ? new Date(data.timestamp).getTime()
@@ -190,10 +193,6 @@ export default function ConsolePage() {
       return next
     })
   }
-
-  const appendMessage = useCallback((message: ConsoleMessage) => {
-    setMessages((prev) => [...prev, message])
-  }, [])
 
   const handleSend = () => {
     const trimmed = inputValue.trim()

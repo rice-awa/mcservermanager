@@ -29,7 +29,7 @@ const defaultConfig: AppConfig = {
   },
   logMonitor: {
     enabled: true,              // 启用日志监听
-    logPath: './logs/latest.log', // 日志文件路径（相对于 MC 服务器目录）
+    logPath: 'D:\\MCTESTSERVER\\1.21.11\\logs\\latest.log', //临时测试用   ./logs/latest.log', // 日志文件路径（相对于 MC 服务器目录）
     encoding: 'utf-8',          // 日志文件编码
     pollInterval: 200,          // 轮询间隔（毫秒）
     sparkCommandTimeout: 5000,  // spark 命令响应超时（毫秒）
