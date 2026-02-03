@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Sidebar from './Sidebar'
@@ -6,7 +6,7 @@ import Sidebar from './Sidebar'
 const renderSidebar = (initialPath = '/') => {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <Sidebar />
+      <Sidebar open={true} onClose={vi.fn()} />
     </MemoryRouter>
   )
 }
