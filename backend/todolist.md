@@ -88,26 +88,50 @@ class RconService {
 
 ### 2.4 Spark Mod API 集成（第42-44步）
 
-#### 步骤 42: 了解 Spark Mod API
-Spark Mod 提供 HTTP API 获取服务器数据：
-☐`/spark/api/report` ☐获取性能报告
-☐`/spark/api/thread` ☐获取线程信息
-☐`/spark/api/memory` ☐获取内存使用
+#### ✅ 步骤 42: 了解 Spark Mod API
+已完成。Spark通过Web API提供数据获取：
+- 官方文档：https://spark.lucko.me/docs/misc/Raw-spark-data
+- 命令：`spark health --upload` 上传并获取报告URL
+- API：`{URL}?raw=1` 获取JSON格式数据
 
-#### 步骤 43: 实现 Spark API 客户端
+#### ✅ 步骤 43: 实现 Spark API 客户端
+已完成。实现了基于Web API的SparkService：
 ```typescript
 // src/services/spark.service.ts
 class SparkService {
-  getReport(): Promise<SparkReport>
-  getTPS(): Promise<TPSData>
-  getMemory(): Promise<MemoryData>
+  getHealth(serverId: string): Promise<SparkHealthReport | null>
+  getTPS(serverId: string): Promise<SparkTPSStats | null>
+  clearCache(serverId?: string): void
 }
 ```
 
-#### 步骤 44: 数据解析和格式化
-☐解析 Spark API 响应
-☐转换为统一格式
-☐缓存机制优化
+**核心实现**：
+1. 通过RCON执行 `spark health --upload` 命令
+2. 从输出中提取报告URL（例如：https://spark.lucko.me/abc123）
+3. 使用 `{URL}?raw=1` 获取JSON数据
+4. 解析JSON并映射到应用数据结构
+5. 实现30秒缓存机制
+
+**数据映射**：
+- TPS/MSPT: 来自 `metadata.platformStatistics`
+- CPU: 来自 `metadata.systemStatistics.cpu`
+- 内存: 优先使用 `platformStatistics.memory.heap`（JVM堆），转换为MB
+- 磁盘: 来自 `systemStatistics.disk`，转换为GB
+
+#### ✅ 步骤 44: 数据解析和格式化
+已完成。
+- ✅ 解析 Spark API JSON响应
+- ✅ 转换为统一的SparkHealthReport格式
+- ✅ 实现30秒缓存机制
+- ✅ 单位转换（内存MB，磁盘GB）
+
+**测试方式**：
+```bash
+cd backend
+npx ts-node test-spark-webapi.ts [host] [port] [password]
+# 示例：
+npx ts-node test-spark-webapi.ts localhost 25575 your-rcon-password
+```
 
 ---
 

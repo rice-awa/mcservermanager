@@ -16,6 +16,7 @@ export interface ServerConfig {
   password: string;       // RCON 密码
   timeout?: number | undefined;       // 连接超时（毫秒）
   sparkApiUrl?: string | undefined;   // Spark Mod API 地址
+  serverDir?: string | undefined;     // 服务器目录路径（用于读取日志）
 }
 
 /**

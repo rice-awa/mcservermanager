@@ -144,6 +144,7 @@ export class ConfigService {
       password: config.password,
       timeout: config.timeout,
       sparkApiUrl: config.sparkApiUrl,
+      serverDir: config.serverDir,
     };
   }
 

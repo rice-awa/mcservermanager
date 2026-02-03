@@ -20,6 +20,9 @@ import { createLogger } from '../utils/logger';
 import { rconService } from '../services/rcon.service';
 import { configService } from '../services/config.service';
 import { playerService } from '../services/player.service';
+import { sparkService } from '../services/spark.service';
+import * as path from 'path';
+import { loadConfig } from '../config';
 
 const logger = createLogger('SocketHandler');
 
@@ -190,6 +193,7 @@ async function handleServerConnect(
         password: configOverride.password ?? '',
         timeout: configOverride.timeout,
         sparkApiUrl: configOverride.sparkApiUrl,
+        serverDir: configOverride.serverDir,
       };
       config = configService.create(createConfig);
       serverId = config.id;
@@ -208,6 +212,14 @@ async function handleServerConnect(
 
     // 连接到 RCON
     await rconService.connect(config);
+
+    // 设置 Spark 服务的日志文件路径
+    const appConfig = loadConfig();
+    const logPath = config.serverDir
+      ? path.join(config.serverDir, appConfig.logMonitor.logPath)
+      : appConfig.logMonitor.logPath;
+    sparkService.setLogPath(logPath);
+    logger.debug(`设置 Spark 日志路径: ${logPath}`);
 
     // 状态会通过 onStatusChange 回调广播
   } catch (error) {

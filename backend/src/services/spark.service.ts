@@ -36,6 +36,8 @@
  */
 
 import axios from 'axios';
+import * as fs from 'fs';
+import * as readline from 'readline';
 import type {
   SparkHealthReport,
   SparkTPSStats,
@@ -124,11 +126,21 @@ interface SparkApiResponse {
 export class SparkService {
   private config: SparkConfig;
   private cache: Map<string, CacheEntry> = new Map();
+  private logFilePath: string = '';
 
   constructor(
     private rcon: RconService = rconService
   ) {
     this.config = appConfig.spark;
+  }
+
+  /**
+   * 设置日志文件路径
+   * 在使用前必须先设置
+   */
+  setLogPath(logPath: string): void {
+    this.logFilePath = logPath;
+    logger.debug(`设置日志文件路径: ${logPath}`);
   }
 
   // ============ 公开 API ============
@@ -168,11 +180,23 @@ export class SparkService {
 
   /**
    * 通过 Web API 获取健康报告
+   * 
+   * 新策略：
+   * 1. 执行 RCON 命令 `spark health --upload`
+   * 2. 等待命令执行完成
+   * 3. 直接读取日志文件最后 N 行，搜索 URL
    */
   private async getHealthViaWebApi(serverId: string): Promise<SparkHealthReport | null> {
     try {
+      // 检查日志文件路径是否已设置
+      if (!this.logFilePath) {
+        logger.error('日志文件路径未设置，请先调用 setLogPath()');
+        return null;
+      }
+
       // 1. 执行 spark health --upload 命令
       logger.info(`执行 spark health --upload 命令 [${serverId}]`);
+      
       const uploadResult = await this.rcon.send(serverId, 'spark health --upload');
       
       if (!uploadResult.success) {
@@ -180,23 +204,32 @@ export class SparkService {
         return null;
       }
 
-      // 2. 从输出中提取 URL
-      const reportUrl = this.extractReportUrl(uploadResult.response);
+      logger.debug('命令已发送，等待输出写入日志...');
+
+      // 2. 等待一段时间让命令完成并写入日志
+      await this.sleep(2000);
+
+      // 3. 从日志文件中提取 URL
+      const reportUrl = await this.extractUrlFromLog();
       if (!reportUrl) {
-        logger.error(`无法从输出中提取报告 URL: ${uploadResult.response}`);
+        logger.error('未能从日志中获取报告 URL');
+        logger.info('请确认：');
+        logger.info('  1. Spark 插件已正确安装');
+        logger.info('  2. 日志文件路径正确');
+        logger.info('  3. 网络可访问 spark.lucko.me');
         return null;
       }
 
       logger.info(`获取到报告 URL: ${reportUrl}`);
 
-      // 3. 获取 JSON 数据
+      // 4. 获取 JSON 数据
       const jsonData = await this.fetchHealthReportJson(reportUrl);
       if (!jsonData) {
         logger.error('获取 JSON 数据失败');
         return null;
       }
 
-      // 4. 解析并转换数据
+      // 5. 解析并转换数据
       const healthReport = this.parseApiResponse(jsonData);
       if (!healthReport) {
         logger.error('解析 API 响应失败');
@@ -209,6 +242,82 @@ export class SparkService {
       logger.error('Web API 方案异常', error);
       return null;
     }
+  }
+
+  /**
+   * 从日志文件中提取 Spark URL
+   * 读取最后 N 行并搜索 URL
+   */
+  private async extractUrlFromLog(): Promise<string | null> {
+    try {
+      const lines = await this.readLastLines(this.logFilePath, 50);
+      
+      // 从后往前查找 URL（最新的在最后）
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        
+        if (!line) continue;
+        
+        // 检查是否是 Spark 线程输出
+        if (!line.includes('spark-worker-pool')) {
+          continue;
+        }
+        
+        // 检查是否包含 URL
+        const urlMatch = line.match(/https?:\/\/spark\.lucko\.me\/([a-zA-Z0-9]+)/);
+        if (urlMatch) {
+          logger.debug(`在日志第 ${i + 1} 行找到 URL: ${urlMatch[0]}`);
+          return urlMatch[0];
+        }
+      }
+      
+      logger.warn('未在最近 50 行日志中找到 Spark URL');
+      return null;
+    } catch (error) {
+      logger.error('读取日志文件失败', error);
+      return null;
+    }
+  }
+
+  /**
+   * 读取文件的最后 N 行
+   */
+  private async readLastLines(filePath: string, lineCount: number): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const lines: string[] = [];
+      
+      const stream = fs.createReadStream(filePath, {
+        encoding: 'utf8',
+      });
+      
+      const rl = readline.createInterface({
+        input: stream,
+        crlfDelay: Infinity,
+      });
+      
+      rl.on('line', (line) => {
+        lines.push(line);
+        // 只保留最后 N 行
+        if (lines.length > lineCount) {
+          lines.shift();
+        }
+      });
+      
+      rl.on('close', () => {
+        resolve(lines);
+      });
+      
+      rl.on('error', (error) => {
+        reject(error);
+      });
+    });
+  }
+
+  /**
+   * 睡眠辅助函数
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
