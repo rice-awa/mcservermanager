@@ -5,10 +5,16 @@ import {
   Terminal, 
   Users, 
   Settings,
-  Server 
+  Server,
+  X
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+
+interface SidebarProps {
+  open: boolean
+  onClose: () => void
+}
 
 const menuItems = [
   {
@@ -33,11 +39,25 @@ const menuItems = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }: SidebarProps) {
   const location = useLocation()
 
   return (
-    <aside className="w-64 border-r bg-card flex flex-col">
+    <aside
+      className={cn(
+        'fixed inset-y-0 left-0 z-40 w-64 border-r bg-card flex flex-col transform transition-transform duration-200 lg:relative lg:translate-x-0',
+        open ? 'translate-x-0' : '-translate-x-full'
+      )}
+    >
+      {/* 移动端关闭按钮 */}
+      <button
+        type="button"
+        className="absolute right-2 top-2 p-2 lg:hidden"
+        onClick={onClose}
+        aria-label="关闭侧边栏"
+      >
+        <X className="h-5 w-5" />
+      </button>
       {/* Logo 区域 */}
       <div className="p-6 flex items-center gap-3">
         <Server className="h-8 w-8 text-primary" />

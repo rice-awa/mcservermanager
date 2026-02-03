@@ -24,7 +24,7 @@ export default function MainLayout() {
             type="button"
             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-foreground"
             onClick={() => setSidebarOpen(true)}
-            aria-label="´ò¿ª²à±ßÀ¸"
+            aria-label="æ‰“å¼€ä¾§è¾¹æ "
           >
             <Menu className="h-5 w-5" />
           </button>
