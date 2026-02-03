@@ -91,9 +91,13 @@ export class StatsService {
       ]);
 
       // 构建状态数据
+      const cpuUsage =
+        healthReport?.cpu.process.last1m ??
+        healthReport?.cpu.system.last1m ??
+        0;
       const stats: ServerStats = {
         tps: healthReport?.tps.last1m ?? 20,
-        cpu: healthReport?.cpu.process.last1m ?? 0,
+        cpu: cpuUsage,
         memory: {
           used: healthReport?.memory.used ?? 0,
           max: healthReport?.memory.max ?? 0,

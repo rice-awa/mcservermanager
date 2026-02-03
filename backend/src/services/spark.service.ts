@@ -414,19 +414,25 @@ export class SparkService {
 
       // 解析 CPU（来自 systemStatistics）
       const cpuData = systemStats.cpu || {};
-      const processUsage = cpuData.processUsage || {};
-      const systemUsage = cpuData.systemUsage || {};
+      const processUsage =
+        cpuData.processUsage ||
+        (cpuData as { process?: { last1m?: number; last15m?: number } }).process ||
+        {};
+      const systemUsage =
+        cpuData.systemUsage ||
+        (cpuData as { system?: { last1m?: number; last15m?: number } }).system ||
+        {};
       
       const cpu: SparkCPUStats = {
         process: {
           last10s: 0, // API 不提供 10s 数据
-          last1m: this.extractNumber(processUsage.last1m, 0),
-          last15m: this.extractNumber(processUsage.last15m, 0),
+          last1m: this.normalizeCpuUsage(processUsage.last1m),
+          last15m: this.normalizeCpuUsage(processUsage.last15m),
         },
         system: {
           last10s: 0, // API 不提供 10s 数据
-          last1m: this.extractNumber(systemUsage.last1m, 0),
-          last15m: this.extractNumber(systemUsage.last15m, 0),
+          last1m: this.normalizeCpuUsage(systemUsage.last1m),
+          last15m: this.normalizeCpuUsage(systemUsage.last15m),
         },
       };
 
@@ -512,6 +518,18 @@ export class SparkService {
       return isNaN(parsed) ? defaultValue : parsed;
     }
     return defaultValue;
+  }
+
+  /**
+   * 规范化 CPU 使用率
+   * 兼容 0-1 与 0-100 两种格式
+   */
+  private normalizeCpuUsage(value: unknown): number {
+    const parsed = this.extractNumber(value, 0);
+    if (parsed > 0 && parsed <= 1) {
+      return parsed * 100;
+    }
+    return parsed;
   }
 
   // ============ 缓存管理 ============
