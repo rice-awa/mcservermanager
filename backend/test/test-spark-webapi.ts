@@ -14,10 +14,10 @@
  * npx ts-node test-spark-webapi.ts localhost 25575 mypassword
  */
 
-import { sparkService } from './src/services/spark.service';
-import { rconService } from './src/services/rcon.service';
-import { logMonitorService } from './src/services/log-monitor.service';
-import { createLogger } from './src/utils/logger';
+import { sparkService } from '../src/services/spark.service';
+import { rconService } from '../src/services/rcon.service';
+import { logMonitorService } from '../src/services/log-monitor.service';
+import { createLogger } from '../src/utils/logger';
 
 const logger = createLogger('TestSparkWebAPI');
 

@@ -3,9 +3,9 @@
  * 不使用日志监听,而是执行命令后直接读取日志文件
  */
 
-import { rconService } from './src/services/rcon.service';
-import { sparkService } from './src/services/spark.service';
-import { createLogger } from './src/utils/logger';
+import { rconService } from '../src/services/rcon.service';
+import { sparkService } from '../src/services/spark.service';
+import { createLogger } from '../src/utils/logger';
 
 const logger = createLogger('TestSparkDirectLog');
 
