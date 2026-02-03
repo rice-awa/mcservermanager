@@ -67,3 +67,21 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 
 // 主题类型
 export type Theme = 'light' | 'dark' | 'system'
+
+// API 响应类型
+export interface ApiSuccessResponse<T = unknown> {
+  success: true
+  data?: T
+  message?: string
+  timestamp?: Date
+}
+
+export interface ApiErrorResponse {
+  success: false
+  error: {
+    code: string
+    message: string
+    details?: unknown
+  }
+  timestamp?: Date
+}

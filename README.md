@@ -22,29 +22,44 @@
 
 ## 快速开始
 
-### 安装依赖
+### 前端开发
 
 ```bash
+# 安装依赖
 npm install
-```
 
-### 开发模式
-
-```bash
+# 启动开发服务器
 npm run dev
 ```
 
-### 构建生产版本
+### 后端开发
 
 ```bash
-npm run build
+# 进入后端目录
+cd backend
+
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
 ```
 
-### 预览生产构建
+### 完整启动指南
 
-```bash
-npm run preview
-```
+详细的启动和配置说明请查看 [快速启动指南](QUICKSTART.md)
+
+### 前后端集成
+
+前后端集成已完成，包括：
+- ✅ REST API 客户端服务
+- ✅ WebSocket 实时通信
+- ✅ 完整的集成文档和示例
+
+相关文档：
+- [前端集成指南](FRONTEND_INTEGRATION_GUIDE.md)
+- [集成总结](FRONTEND_INTEGRATION_SUMMARY.md)
+- [后端对接文档](backend/backend-integration.md)
 
 ## Expanding the ESLint configuration
 

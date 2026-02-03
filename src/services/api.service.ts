@@ -1,0 +1,249 @@
+/**
+ * API 客户端服务
+ * 封装所有 REST API 调用，与后端对接文档保持一致
+ */
+import type { 
+  ServerConfig, 
+  Player, 
+  ServerStats, 
+  TPSData,
+  ApiSuccessResponse,
+  ApiErrorResponse
+} from '@/types';
+
+// API 基础配置
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+/**
+ * 通用 API 响应类型
+ */
+type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+/**
+ * 分页响应
+ */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * 玩家查询参数
+ */
+export interface PlayerQueryParams {
+  q?: string;
+  status?: 'online' | 'offline' | 'all';
+  page?: number;
+  pageSize?: number;
+  sortBy?: 'name' | 'onlineTime' | 'ping';
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * 仪表盘历史数据
+ */
+export interface DashboardHistoryData {
+  stats: ServerStats;
+  tpsHistory: TPSData[];
+  cpuHistory: Array<{ timestamp: number; value: number }>;
+  memoryHistory: Array<{ timestamp: number; used: number; allocated: number }>;
+}
+
+/**
+ * 测试连接结果
+ */
+export interface TestConnectionResult {
+  success: boolean;
+  message: string;
+  latency?: number;
+}
+
+/**
+ * API 错误类
+ */
+export class ApiError extends Error {
+  code?: string;
+  details?: unknown;
+
+  constructor(
+    message: string,
+    code?: string,
+    details?: unknown
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+/**
+ * 发送 HTTP 请求
+ */
+async function fetchApi<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    const data = await response.json() as ApiResponse<T>;
+
+    if (!response.ok || !data.success) {
+      const error = data as ApiErrorResponse;
+      throw new ApiError(
+        error.error?.message || '请求失败',
+        error.error?.code,
+        error.error?.details
+      );
+    }
+
+    return (data as ApiSuccessResponse<T>).data as T;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(
+      error instanceof Error ? error.message : '网络请求失败',
+      'NETWORK_ERROR'
+    );
+  }
+}
+
+// ============ 配置管理 API（对接文档 3.1） ============
+
+/**
+ * 获取配置列表
+ */
+export async function getConfigs(): Promise<ServerConfig[]> {
+  return fetchApi<ServerConfig[]>('/api/configs');
+}
+
+/**
+ * 获取单个配置
+ */
+export async function getConfig(id: string): Promise<ServerConfig> {
+  return fetchApi<ServerConfig>(`/api/configs/${id}`);
+}
+
+/**
+ * 新建配置
+ */
+export async function createConfig(
+  config: Omit<ServerConfig, 'id'>
+): Promise<ServerConfig> {
+  return fetchApi<ServerConfig>('/api/configs', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  });
+}
+
+/**
+ * 更新配置
+ */
+export async function updateConfig(
+  id: string,
+  config: Partial<ServerConfig>
+): Promise<ServerConfig> {
+  return fetchApi<ServerConfig>(`/api/configs/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+}
+
+/**
+ * 删除配置
+ */
+export async function deleteConfig(id: string): Promise<void> {
+  return fetchApi<void>(`/api/configs/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * 测试连接
+ */
+export async function testConnection(
+  id: string
+): Promise<TestConnectionResult> {
+  return fetchApi<TestConnectionResult>(`/api/configs/${id}/test`, {
+    method: 'POST',
+  });
+}
+
+// ============ 玩家管理 API（对接文档 3.2） ============
+
+/**
+ * 获取玩家列表（支持筛选与分页）
+ */
+export async function getPlayers(
+  serverId: string,
+  params?: PlayerQueryParams
+): Promise<PaginatedResponse<Player>> {
+  const queryParams = new URLSearchParams();
+  queryParams.append('serverId', serverId);
+  
+  if (params?.q) queryParams.append('q', params.q);
+  if (params?.status) queryParams.append('status', params.status);
+  if (params?.page) queryParams.append('page', params.page.toString());
+  if (params?.pageSize) queryParams.append('pageSize', params.pageSize.toString());
+  if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
+  if (params?.sortOrder) queryParams.append('sortOrder', params.sortOrder);
+
+  return fetchApi<PaginatedResponse<Player>>(`/api/players?${queryParams}`);
+}
+
+/**
+ * 获取玩家数量
+ */
+export async function getPlayerCount(
+  serverId: string
+): Promise<{ online: number; max: number }> {
+  const queryParams = new URLSearchParams({ serverId });
+  return fetchApi<{ online: number; max: number }>(`/api/players/count?${queryParams}`);
+}
+
+// ============ 仪表盘数据 API（对接文档 3.3） ============
+
+/**
+ * 获取一次性快照
+ */
+export async function getStats(serverId: string): Promise<ServerStats> {
+  const queryParams = new URLSearchParams({ serverId });
+  return fetchApi<ServerStats>(`/api/stats?${queryParams}`);
+}
+
+/**
+ * 获取历史曲线数据
+ */
+export async function getStatsHistory(
+  serverId: string
+): Promise<DashboardHistoryData> {
+  const queryParams = new URLSearchParams({ serverId });
+  return fetchApi<DashboardHistoryData>(`/api/stats/history?${queryParams}`);
+}
+
+// ============ 工具函数 ============
+
+/**
+ * 检查后端服务是否可用
+ */
+export async function checkHealth(): Promise<boolean> {
+  try {
+    await fetch(`${API_BASE_URL}/health`);
+    return true;
+  } catch {
+    return false;
+  }
+}
