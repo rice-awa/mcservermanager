@@ -343,6 +343,30 @@ export interface AppConfig {
     historySize: number;
   };
   spark: SparkConfig;
+  logMonitor: LogMonitorConfig;
+}
+
+/**
+ * 日志监听配置
+ */
+export interface LogMonitorConfig {
+  enabled: boolean;               // 启用日志监听
+  logPath: string;                // 日志文件路径
+  encoding: string;               // 文件编码
+  pollInterval: number;           // 轮询间隔（毫秒）
+  sparkCommandTimeout: number;    // spark 命令响应超时（毫秒）
+}
+
+/**
+ * 日志行
+ */
+export interface LogLine {
+  timestamp: Date;
+  level: string;
+  thread: string;
+  logger: string;
+  message: string;
+  raw: string;
 }
 
 /**

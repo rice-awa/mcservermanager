@@ -27,6 +27,13 @@ const defaultConfig: AppConfig = {
     reportCacheTTL: 30000,      // 报告缓存 30 秒
     timeout: 10000,             // API 请求超时 10 秒
   },
+  logMonitor: {
+    enabled: true,              // 启用日志监听
+    logPath: './logs/latest.log', // 日志文件路径（相对于 MC 服务器目录）
+    encoding: 'utf-8',          // 日志文件编码
+    pollInterval: 200,          // 轮询间隔（毫秒）
+    sparkCommandTimeout: 5000,  // spark 命令响应超时（毫秒）
+  },
 };
 
 /**
@@ -81,6 +88,13 @@ export function loadConfig(): AppConfig {
       preferRcon: getEnv('SPARK_PREFER_RCON', 'true') === 'true',
       reportCacheTTL: getEnvNumber('SPARK_REPORT_CACHE_TTL', defaultConfig.spark.reportCacheTTL),
       timeout: getEnvNumber('SPARK_TIMEOUT', defaultConfig.spark.timeout),
+    },
+    logMonitor: {
+      enabled: getEnv('LOG_MONITOR_ENABLED', 'true') === 'true',
+      logPath: getEnv('LOG_MONITOR_PATH', defaultConfig.logMonitor.logPath),
+      encoding: getEnv('LOG_MONITOR_ENCODING', defaultConfig.logMonitor.encoding),
+      pollInterval: getEnvNumber('LOG_MONITOR_POLL_INTERVAL', defaultConfig.logMonitor.pollInterval),
+      sparkCommandTimeout: getEnvNumber('LOG_MONITOR_SPARK_TIMEOUT', defaultConfig.logMonitor.sparkCommandTimeout),
     },
   };
 }

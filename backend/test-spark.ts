@@ -35,9 +35,11 @@ function parseTPSOutput(output: string): object | null {
   const cleaned = cleanColorCodes(output);
   console.log('\n[TPS] 清理后输出:', cleaned);
 
-  // 匹配 TPS 数值
+  // 匹配 spark tps 输出格式:
+  // [⚡] TPS from last 5s, 10s, 1m, 5m, 15m:
+  // [⚡]  20.0, *20.0, *20.0, *20.0, *20.0
   const tpsMatch = cleaned.match(
-    /TPS[^:]*:\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?/i
+    /TPS\s+from\s+last\s+5s[^:]*:\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?/i
   );
 
   if (tpsMatch && tpsMatch[1] && tpsMatch[2] && tpsMatch[3] && tpsMatch[4] && tpsMatch[5]) {
@@ -50,16 +52,20 @@ function parseTPSOutput(output: string): object | null {
     };
   }
 
-  // 备用解析
-  const numbers = cleaned.match(/[\d.]+/g);
-  if (numbers && numbers.length >= 5 && numbers[0] && numbers[1] && numbers[2] && numbers[3] && numbers[4]) {
-    return {
-      last5s: safeParseFloat(numbers[0], 20),
-      last10s: safeParseFloat(numbers[1], 20),
-      last1m: safeParseFloat(numbers[2], 20),
-      last5m: safeParseFloat(numbers[3], 20),
-      last15m: safeParseFloat(numbers[4], 20),
-    };
+  // 备用解析：查找所有带 * 或不带 * 的数字
+  const numbers = cleaned.match(/\*?[\d.]+/g);
+  if (numbers && numbers.length >= 5) {
+    // 清理 * 号
+    const cleanNumbers = numbers.map(n => n.replace('*', ''));
+    if (cleanNumbers[0] && cleanNumbers[1] && cleanNumbers[2] && cleanNumbers[3] && cleanNumbers[4]) {
+      return {
+        last5s: safeParseFloat(cleanNumbers[0], 20),
+        last10s: safeParseFloat(cleanNumbers[1], 20),
+        last1m: safeParseFloat(cleanNumbers[2], 20),
+        last5m: safeParseFloat(cleanNumbers[3], 20),
+        last15m: safeParseFloat(cleanNumbers[4], 20),
+      };
+    }
   }
 
   return null;
@@ -69,8 +75,11 @@ function parseTPSOutput(output: string): object | null {
 function parseMSPTOutput(output: string): object | null {
   const cleaned = cleanColorCodes(output);
 
+  // 匹配 spark tps 输出中的 MSPT:
+  // [⚡] Tick durations (min/med/95%ile/max ms) from last 10s, 1m:
+  // [⚡]  0.2/0.2/0.7/1.7;  0.2/0.3/1.3/269.0
   const msptMatch = cleaned.match(
-    /(?:Tick durations?|MSPT)[^:]*:\s*\*?([\d.]+)\*?\/\*?([\d.]+)\*?\/\*?([\d.]+)\*?\/\*?([\d.]+)\*?/i
+    /Tick\s+durations[^:]*:\s*\*?([\d.]+)\*?\/\*?([\d.]+)\*?\/\*?([\d.]+)\*?\/\*?([\d.]+)\*?/i
   );
 
   if (msptMatch && msptMatch[1] && msptMatch[2] && msptMatch[3] && msptMatch[4]) {
@@ -79,6 +88,17 @@ function parseMSPTOutput(output: string): object | null {
       median: safeParseFloat(msptMatch[2], 0),
       percentile95: safeParseFloat(msptMatch[3], 0),
       max: safeParseFloat(msptMatch[4], 0),
+    };
+  }
+
+  // 备用：查找 x/x/x/x 格式的数字
+  const msptLine = cleaned.match(/([\d.]+)\/([\d.]+)\/([\d.]+)\/([\d.]+)/);
+  if (msptLine && msptLine[1] && msptLine[2] && msptLine[3] && msptLine[4]) {
+    return {
+      min: safeParseFloat(msptLine[1], 0),
+      median: safeParseFloat(msptLine[2], 0),
+      percentile95: safeParseFloat(msptLine[3], 0),
+      max: safeParseFloat(msptLine[4], 0),
     };
   }
 
@@ -92,21 +112,14 @@ function parseHealthOutput(output: string): object {
 
   const result: Record<string, unknown> = {};
 
-  // CPU Process
-  const cpuProcessMatch = cleaned.match(
-    /CPU\s*(?:Process|Usage)[^:]*:\s*\*?([\d.]+)%?\*?,?\s*\*?([\d.]+)%?\*?,?\s*\*?([\d.]+)%?\*?/i
-  );
-  if (cpuProcessMatch && cpuProcessMatch[1] && cpuProcessMatch[2] && cpuProcessMatch[3]) {
-    result.cpuProcess = {
-      last10s: safeParseFloat(cpuProcessMatch[1], 0),
-      last1m: safeParseFloat(cpuProcessMatch[2], 0),
-      last15m: safeParseFloat(cpuProcessMatch[3], 0),
-    };
-  }
+  // CPU usage from spark tps output:
+  // [⚡] CPU usage from last 10s, 1m, 15m:
+  // [⚡]  30%, 29%, 48%  (system)
+  // [⚡]  2%, 1%, 2%  (process)
 
-  // CPU System
+  // CPU System - 匹配 system 行
   const cpuSystemMatch = cleaned.match(
-    /CPU\s*System[^:]*:\s*\*?([\d.]+)%?\*?,?\s*\*?([\d.]+)%?\*?,?\s*\*?([\d.]+)%?\*?/i
+    /([\d.]+)%\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\(system\)/i
   );
   if (cpuSystemMatch && cpuSystemMatch[1] && cpuSystemMatch[2] && cpuSystemMatch[3]) {
     result.cpuSystem = {
@@ -116,7 +129,19 @@ function parseHealthOutput(output: string): object {
     };
   }
 
-  // Memory
+  // CPU Process - 匹配 process 行
+  const cpuProcessMatch = cleaned.match(
+    /([\d.]+)%\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\(process\)/i
+  );
+  if (cpuProcessMatch && cpuProcessMatch[1] && cpuProcessMatch[2] && cpuProcessMatch[3]) {
+    result.cpuProcess = {
+      last10s: safeParseFloat(cpuProcessMatch[1], 0),
+      last1m: safeParseFloat(cpuProcessMatch[2], 0),
+      last15m: safeParseFloat(cpuProcessMatch[3], 0),
+    };
+  }
+
+  // Memory - spark healthreport 格式
   const memoryMatch = cleaned.match(
     /Memory[^:]*:\s*([\d.]+)\s*[/]\s*([\d.]+)\s*(MB|GB)?/i
   );
@@ -131,7 +156,7 @@ function parseHealthOutput(output: string): object {
     result.memory = { used: Math.round(used), max: Math.round(max) };
   }
 
-  // Disk
+  // Disk - spark healthreport 格式
   const diskMatch = cleaned.match(
     /Disk[^:]*:\s*([\d.]+)\s*[/]\s*([\d.]+)\s*(GB|TB)?/i
   );
@@ -173,18 +198,18 @@ async function main() {
     // 测试 spark tps
     console.log('\n[2] 执行 spark tps 命令...');
     const tpsResponse = await rcon.send('spark tps');
-    console.log('    原始输出:', tpsResponse);
+    console.log('    原始输出:', JSON.stringify(tpsResponse));
 
     const tpsData = parseTPSOutput(tpsResponse);
-    console.log('    解析结果:', JSON.stringify(tpsData, null, 2));
+    console.log('    TPS 解析结果:', JSON.stringify(tpsData, null, 2));
 
     const msptData = parseMSPTOutput(tpsResponse);
     console.log('    MSPT 解析:', JSON.stringify(msptData, null, 2));
 
-    // 测试 spark health
-    console.log('\n[3] 执行 spark health 命令...');
-    const healthResponse = await rcon.send('spark health');
-    console.log('    原始输出:', healthResponse);
+    // 测试 spark healthreport
+    console.log('\n[3] 执行 spark healthreport 命令...');
+    const healthResponse = await rcon.send('spark healthreport');
+    console.log('    原始输出:', JSON.stringify(healthResponse));
 
     const healthData = parseHealthOutput(healthResponse);
     console.log('    解析结果:', JSON.stringify(healthData, null, 2));
