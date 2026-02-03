@@ -14,7 +14,7 @@ import { Rcon } from 'rcon-client';
 const SERVER_CONFIG = {
   host: 'localhost',
   port: 25575,        // RCON 端口
-  password: 'your_rcon_password',  // 修改为你的 RCON 密码
+  password: 'riceawa123456',  // RCON 密码
 };
 
 // ============ 颜色代码清理 ============
@@ -25,6 +25,12 @@ function cleanColorCodes(text: string): string {
 }
 
 // ============ TPS 解析 ============
+function safeParseFloat(value: string | undefined, defaultValue: number): number {
+  if (value === undefined) return defaultValue;
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
 function parseTPSOutput(output: string): object | null {
   const cleaned = cleanColorCodes(output);
   console.log('\n[TPS] 清理后输出:', cleaned);
@@ -34,25 +40,25 @@ function parseTPSOutput(output: string): object | null {
     /TPS[^:]*:\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?,?\s*\*?([\d.]+)\*?/i
   );
 
-  if (tpsMatch) {
+  if (tpsMatch && tpsMatch[1] && tpsMatch[2] && tpsMatch[3] && tpsMatch[4] && tpsMatch[5]) {
     return {
-      last5s: parseFloat(tpsMatch[1]) || 20,
-      last10s: parseFloat(tpsMatch[2]) || 20,
-      last1m: parseFloat(tpsMatch[3]) || 20,
-      last5m: parseFloat(tpsMatch[4]) || 20,
-      last15m: parseFloat(tpsMatch[5]) || 20,
+      last5s: safeParseFloat(tpsMatch[1], 20),
+      last10s: safeParseFloat(tpsMatch[2], 20),
+      last1m: safeParseFloat(tpsMatch[3], 20),
+      last5m: safeParseFloat(tpsMatch[4], 20),
+      last15m: safeParseFloat(tpsMatch[5], 20),
     };
   }
 
   // 备用解析
   const numbers = cleaned.match(/[\d.]+/g);
-  if (numbers && numbers.length >= 5) {
+  if (numbers && numbers.length >= 5 && numbers[0] && numbers[1] && numbers[2] && numbers[3] && numbers[4]) {
     return {
-      last5s: parseFloat(numbers[0]) || 20,
-      last10s: parseFloat(numbers[1]) || 20,
-      last1m: parseFloat(numbers[2]) || 20,
-      last5m: parseFloat(numbers[3]) || 20,
-      last15m: parseFloat(numbers[4]) || 20,
+      last5s: safeParseFloat(numbers[0], 20),
+      last10s: safeParseFloat(numbers[1], 20),
+      last1m: safeParseFloat(numbers[2], 20),
+      last5m: safeParseFloat(numbers[3], 20),
+      last15m: safeParseFloat(numbers[4], 20),
     };
   }
 
@@ -67,12 +73,12 @@ function parseMSPTOutput(output: string): object | null {
     /(?:Tick durations?|MSPT)[^:]*:\s*\*?([\d.]+)\*?\/\*?([\d.]+)\*?\/\*?([\d.]+)\*?\/\*?([\d.]+)\*?/i
   );
 
-  if (msptMatch) {
+  if (msptMatch && msptMatch[1] && msptMatch[2] && msptMatch[3] && msptMatch[4]) {
     return {
-      min: parseFloat(msptMatch[1]) || 0,
-      median: parseFloat(msptMatch[2]) || 0,
-      percentile95: parseFloat(msptMatch[3]) || 0,
-      max: parseFloat(msptMatch[4]) || 0,
+      min: safeParseFloat(msptMatch[1], 0),
+      median: safeParseFloat(msptMatch[2], 0),
+      percentile95: safeParseFloat(msptMatch[3], 0),
+      max: safeParseFloat(msptMatch[4], 0),
     };
   }
 
@@ -90,11 +96,11 @@ function parseHealthOutput(output: string): object {
   const cpuProcessMatch = cleaned.match(
     /CPU\s*(?:Process|Usage)[^:]*:\s*\*?([\d.]+)%?\*?,?\s*\*?([\d.]+)%?\*?,?\s*\*?([\d.]+)%?\*?/i
   );
-  if (cpuProcessMatch) {
+  if (cpuProcessMatch && cpuProcessMatch[1] && cpuProcessMatch[2] && cpuProcessMatch[3]) {
     result.cpuProcess = {
-      last10s: parseFloat(cpuProcessMatch[1]) || 0,
-      last1m: parseFloat(cpuProcessMatch[2]) || 0,
-      last15m: parseFloat(cpuProcessMatch[3]) || 0,
+      last10s: safeParseFloat(cpuProcessMatch[1], 0),
+      last1m: safeParseFloat(cpuProcessMatch[2], 0),
+      last15m: safeParseFloat(cpuProcessMatch[3], 0),
     };
   }
 
@@ -102,11 +108,11 @@ function parseHealthOutput(output: string): object {
   const cpuSystemMatch = cleaned.match(
     /CPU\s*System[^:]*:\s*\*?([\d.]+)%?\*?,?\s*\*?([\d.]+)%?\*?,?\s*\*?([\d.]+)%?\*?/i
   );
-  if (cpuSystemMatch) {
+  if (cpuSystemMatch && cpuSystemMatch[1] && cpuSystemMatch[2] && cpuSystemMatch[3]) {
     result.cpuSystem = {
-      last10s: parseFloat(cpuSystemMatch[1]) || 0,
-      last1m: parseFloat(cpuSystemMatch[2]) || 0,
-      last15m: parseFloat(cpuSystemMatch[3]) || 0,
+      last10s: safeParseFloat(cpuSystemMatch[1], 0),
+      last1m: safeParseFloat(cpuSystemMatch[2], 0),
+      last15m: safeParseFloat(cpuSystemMatch[3], 0),
     };
   }
 
@@ -114,9 +120,9 @@ function parseHealthOutput(output: string): object {
   const memoryMatch = cleaned.match(
     /Memory[^:]*:\s*([\d.]+)\s*[/]\s*([\d.]+)\s*(MB|GB)?/i
   );
-  if (memoryMatch) {
-    let used = parseFloat(memoryMatch[1]) || 0;
-    let max = parseFloat(memoryMatch[2]) || 0;
+  if (memoryMatch && memoryMatch[1] && memoryMatch[2]) {
+    let used = safeParseFloat(memoryMatch[1], 0);
+    let max = safeParseFloat(memoryMatch[2], 0);
     const unit = memoryMatch[3]?.toUpperCase();
     if (unit === 'GB') {
       used *= 1024;
@@ -129,9 +135,9 @@ function parseHealthOutput(output: string): object {
   const diskMatch = cleaned.match(
     /Disk[^:]*:\s*([\d.]+)\s*[/]\s*([\d.]+)\s*(GB|TB)?/i
   );
-  if (diskMatch) {
-    let used = parseFloat(diskMatch[1]) || 0;
-    let total = parseFloat(diskMatch[2]) || 0;
+  if (diskMatch && diskMatch[1] && diskMatch[2]) {
+    let used = safeParseFloat(diskMatch[1], 0);
+    let total = safeParseFloat(diskMatch[2], 0);
     const unit = diskMatch[3]?.toUpperCase();
     if (unit === 'TB') {
       used *= 1024;
@@ -190,7 +196,7 @@ async function main() {
 
     const cleanedList = cleanColorCodes(listResponse);
     const playerMatch = cleanedList.match(/(\d+)\s*(?:of a max of|\/)\s*(\d+)/i);
-    if (playerMatch) {
+    if (playerMatch && playerMatch[1] && playerMatch[2]) {
       console.log('    在线玩家:', playerMatch[1], '/', playerMatch[2]);
     }
 

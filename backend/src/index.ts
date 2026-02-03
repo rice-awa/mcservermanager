@@ -9,7 +9,8 @@ import cors from 'cors';
 import { loadConfig } from './config';
 import { logger, errorHandler, notFoundHandler, createSuccessResponse } from './utils';
 import { setupSocketHandlers } from './handlers';
-import { configRoutes, playerRoutes, statsRoutes } from './routes';
+import { configRoutes, playerRoutes, statsRoutes, authRoutes } from './routes';
+import { socketAuthMiddleware } from './middleware/socket-auth.middleware';
 
 // 加载配置
 const config = loadConfig();
@@ -27,6 +28,9 @@ const io = new SocketServer(httpServer, {
     credentials: config.cors.credentials,
   },
 });
+
+// Socket.io 认证中间件
+io.use(socketAuthMiddleware);
 
 // 中间件配置
 app.use(cors({
@@ -53,6 +57,10 @@ app.get('/api', (req, res) => {
     endpoints: [
       'GET /health - 健康检查',
       'GET /api - API 信息',
+      'POST /api/auth/login - 用户登录',
+      'GET /api/auth/me - 获取当前用户',
+      'POST /api/auth/refresh - 刷新 token',
+      'POST /api/auth/logout - 用户登出',
       'GET /api/configs - 获取配置列表',
       'POST /api/configs - 新建配置',
       'PUT /api/configs/:id - 更新配置',
@@ -62,12 +70,15 @@ app.get('/api', (req, res) => {
       'GET /api/players/count - 获取玩家数量',
       'GET /api/stats - 获取状态快照',
       'GET /api/stats/history - 获取历史数据',
-      'WS / - WebSocket 连接',
+      'WS / - WebSocket 连接 (支持 auth 事件)',
     ],
   }));
 });
 
 // ============ REST API 路由（对接文档 3 节） ============
+
+// 认证 API
+app.use('/api/auth', authRoutes);
 
 // 配置管理 API (对接文档 3.1)
 app.use('/api/configs', configRoutes);

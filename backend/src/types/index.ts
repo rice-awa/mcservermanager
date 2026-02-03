@@ -369,3 +369,14 @@ export interface TestConnectionResult {
   message: string;
   latency?: number;
 }
+
+// ============ 认证类型 ============
+
+export type {
+  User,
+  LoginRequest,
+  TokenPayload,
+  AuthTokens,
+  LoginResponse,
+  AuthenticatedRequest,
+} from './auth';

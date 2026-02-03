@@ -4,3 +4,4 @@
 export { default as configRoutes } from './config.routes';
 export { default as playerRoutes } from './player.routes';
 export { default as statsRoutes } from './stats.routes';
+export { default as authRoutes } from './auth.routes';
