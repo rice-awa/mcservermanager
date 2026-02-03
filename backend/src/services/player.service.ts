@@ -161,7 +161,7 @@ export class PlayerService {
       .map((name) => name.trim())
       .filter((name) => name.length > 0);
 
-    return playerNames.map((name, index) => ({
+    return playerNames.map((name) => ({
       id: `${serverId}_${name}`,
       name,
       uuid: '', // RCON list 命令不返回 UUID，需要其他方式获取

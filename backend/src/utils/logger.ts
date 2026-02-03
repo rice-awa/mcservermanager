@@ -1,7 +1,7 @@
 /**
  * 日志记录器工具
  */
-import type { LogLevel, LogEntry } from '../types';
+import type { LogLevel } from '../types';
 
 // 日志级别优先级
 const LOG_LEVELS: Record<LogLevel, number> = {

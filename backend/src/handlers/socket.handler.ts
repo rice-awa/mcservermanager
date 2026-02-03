@@ -11,15 +11,11 @@ import type {
   ConnectPayload,
   ExecuteCommandPayload,
   CommandOutputPayload,
-  StatsUpdatePayload,
-  PlayerUpdatePayload,
   ErrorPayload,
-  ConnectionStatus,
 } from '../types';
 import { createLogger } from '../utils/logger';
 import { rconService } from '../services/rcon.service';
 import { configService } from '../services/config.service';
-import { playerService } from '../services/player.service';
 import { sparkService } from '../services/spark.service';
 import * as path from 'path';
 import { loadConfig } from '../config';

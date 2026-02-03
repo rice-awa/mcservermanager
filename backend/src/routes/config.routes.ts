@@ -3,7 +3,7 @@
  * 对应对接文档 3.1 节
  */
 import { Router, Request, Response } from 'express';
-import type { ServerConfig, ApiResponse, ApiSuccessResponse, ApiErrorResponse, TestConnectionResult } from '../types';
+import type { ServerConfig, ApiSuccessResponse, ApiErrorResponse, TestConnectionResult } from '../types';
 import { configService } from '../services/config.service';
 import { rconService } from '../services/rcon.service';
 import { createLogger } from '../utils/logger';

@@ -10,6 +10,7 @@ import {
   AreaChart,
   Area,
 } from 'recharts'
+import type { TooltipProps } from 'recharts'
 import { cn } from '@/lib/utils'
 import type { ServerStats, TPSData } from '@/types'
 import {
@@ -48,6 +49,28 @@ const formatTimeShort = (timestamp: number) =>
 const formatNumber = (value: number, digits = 2) => value.toFixed(digits)
 
 const formatMemory = (value: number) => `${formatNumber(value / 1024, 1)} GB`
+
+const formatTimeLabel: TooltipProps<number, string>['labelFormatter'] = (
+  label
+) => formatTimeShort(Number(label ?? 0))
+
+const formatTpsTooltip: TooltipProps<number, string>['formatter'] = (value) => [
+  typeof value === 'number' ? value.toFixed(2) : '0',
+  'TPS',
+]
+
+const formatCpuTooltip: TooltipProps<number, string>['formatter'] = (value) => [
+  `${typeof value === 'number' ? value.toFixed(1) : '0'}%`,
+  'CPU',
+]
+
+const formatMemoryTooltip: TooltipProps<number, string>['formatter'] = (
+  value,
+  name
+) => [
+  typeof value === 'number' ? formatMemory(value) : '0 GB',
+  name === 'used' ? '已使用' : '已分配',
+]
 
 const appendHistory = <T,>(items: T[], next: T, limit: number) => {
   const updated = [...items, next]
@@ -293,8 +316,8 @@ export default function DashboardPage() {
                 />
                 <YAxis domain={[0, 20]} className="text-xs" stroke="currentColor" />
                 <Tooltip
-                  formatter={(value: number) => [value.toFixed(2), 'TPS']}
-                  labelFormatter={(value: number) => formatTimeShort(value)}
+                  formatter={formatTpsTooltip}
+                  labelFormatter={formatTimeLabel}
                 />
                 <Line type="monotone" dataKey="tps" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
               </LineChart>
@@ -322,8 +345,8 @@ export default function DashboardPage() {
                 />
                 <YAxis domain={[0, 100]} className="text-xs" stroke="currentColor" />
                 <Tooltip
-                  formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']}
-                  labelFormatter={(value: number) => formatTimeShort(value)}
+                  formatter={formatCpuTooltip}
+                  labelFormatter={formatTimeLabel}
                 />
                 <Area
                   type="monotone"
@@ -358,11 +381,8 @@ export default function DashboardPage() {
               />
               <YAxis className="text-xs" stroke="currentColor" />
               <Tooltip
-                formatter={(value: number, name: string) => [
-                  formatMemory(value),
-                  name === 'used' ? '已使用' : '已分配',
-                ]}
-                labelFormatter={(value: number) => formatTimeShort(value)}
+                formatter={formatMemoryTooltip}
+                labelFormatter={formatTimeLabel}
               />
               <Area
                 type="monotone"

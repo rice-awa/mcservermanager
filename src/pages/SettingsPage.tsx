@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { ConnectionStatus, ServerConfig } from '@/types'
@@ -134,7 +134,7 @@ export default function SettingsPage() {
     return () => {
       socketService.off('server:status', handleStatus)
     }
-  }, [tokens?.socketToken, activeServerId, autoReconnect])
+  }, [tokens?.socketToken, activeServerId, autoReconnect, scheduleReconnect])
 
   useEffect(() => {
     return () => {
@@ -192,7 +192,7 @@ export default function SettingsPage() {
     serverDir: form.serverDir?.trim() || undefined,
   })
 
-  const scheduleReconnect = (serverId: string) => {
+  const scheduleReconnect = useCallback((serverId: string) => {
     if (!autoReconnect) {
       return
     }
@@ -205,7 +205,7 @@ export default function SettingsPage() {
       reconnectTimerRef.current = null
       connectServerById(serverId)
     }, 5000)
-  }
+  }, [autoReconnect, connectServerById])
 
   const handleTestConnection = async () => {
     setRequestPending(true)

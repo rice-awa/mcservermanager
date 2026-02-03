@@ -199,45 +199,41 @@ export class RconService {
     logger.info(`正在重连服务器: ${connection.config.name}`);
     this.emitStatusChange(serverId, 'connecting');
 
+    // 先清理旧连接
     try {
-      // 先清理旧连接
-      try {
-        connection.rcon.end();
-      } catch {
-        // 忽略清理错误
-      }
-
-      // 创建新连接
-      const rcon = new Rcon({
-        host: connection.config.host,
-        port: connection.config.port,
-        password: connection.config.password,
-        timeout: connection.config.timeout ?? this.timeout,
-      });
-
-      rcon.on('error', (error) => {
-        logger.error(`RCON 错误 [${connection.config.name}]: ${error.message}`);
-        this.handleDisconnect(serverId, error.message);
-      });
-
-      rcon.on('end', () => {
-        logger.info(`RCON 连接关闭 [${connection.config.name}]`);
-        this.handleDisconnect(serverId, '连接已关闭');
-      });
-
-      await rcon.connect();
-
-      // 更新连接
-      connection.rcon = rcon;
-      connection.status = 'connected';
-      connection.lastActivity = new Date();
-      connection.reconnectAttempts = 0;
-
-      logger.info(`重连成功: ${connection.config.name}`);
-      this.emitStatusChange(serverId, 'connected');
-    } catch (error) {
-      throw error;
+      connection.rcon.end();
+    } catch {
+      // 忽略清理错误
     }
+
+    // 创建新连接
+    const rcon = new Rcon({
+      host: connection.config.host,
+      port: connection.config.port,
+      password: connection.config.password,
+      timeout: connection.config.timeout ?? this.timeout,
+    });
+
+    rcon.on('error', (error) => {
+      logger.error(`RCON 错误 [${connection.config.name}]: ${error.message}`);
+      this.handleDisconnect(serverId, error.message);
+    });
+
+    rcon.on('end', () => {
+      logger.info(`RCON 连接关闭 [${connection.config.name}]`);
+      this.handleDisconnect(serverId, '连接已关闭');
+    });
+
+    await rcon.connect();
+
+    // 更新连接
+    connection.rcon = rcon;
+    connection.status = 'connected';
+    connection.lastActivity = new Date();
+    connection.reconnectAttempts = 0;
+
+    logger.info(`重连成功: ${connection.config.name}`);
+    this.emitStatusChange(serverId, 'connected');
   }
 
   /**
@@ -320,7 +316,7 @@ export class RconService {
     let parsed = response.replace(/§[0-9a-fk-or]/gi, '');
 
     // 移除其他控制字符
-    parsed = parsed.replace(/[\x00-\x1F\x7F]/g, '');
+    parsed = parsed.replace(/[\u0000-\u001F\u007F]/g, '');
 
     // 清理多余空白
     parsed = parsed.trim();

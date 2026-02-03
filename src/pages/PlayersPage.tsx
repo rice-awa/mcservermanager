@@ -73,19 +73,23 @@ export default function PlayersPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setPage(1)
-  }, [query, statusFilter, sortKey, sortDirection])
-
-  useEffect(() => {
+    let ignore = false
     if (!activeServerId) {
-      setPlayers([])
-      setTotal(0)
-      setCount(null)
+      queueMicrotask(() => {
+        if (!ignore) {
+          setLoading(false)
+          setError(null)
+        }
+      })
       return
     }
 
-    setLoading(true)
-    setError(null)
+    queueMicrotask(() => {
+      if (!ignore) {
+        setLoading(true)
+        setError(null)
+      }
+    })
 
     getPlayers(activeServerId, {
       q: query.trim() || undefined,
@@ -96,16 +100,28 @@ export default function PlayersPage() {
       sortOrder: sortDirection,
     })
       .then((result) => {
+        if (ignore) {
+          return
+        }
         setPlayers(result.items.map(buildPlayerRow))
         setTotal(result.total)
       })
       .catch((err) => {
+        if (ignore) {
+          return
+        }
         const message = err instanceof Error ? err.message : '加载玩家失败'
         setError(message)
       })
       .finally(() => {
-        setLoading(false)
+        if (!ignore) {
+          setLoading(false)
+        }
       })
+
+    return () => {
+      ignore = true
+    }
   }, [
     activeServerId,
     query,
@@ -124,17 +140,32 @@ export default function PlayersPage() {
       .catch(() => setCount(null))
   }, [activeServerId])
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const onlineCount = count?.online ?? players.filter((p) => p.status === 'online').length
-  const offlineCount = Math.max(0, total - onlineCount)
+  const displayPlayers = activeServerId ? players : []
+  const displayTotal = activeServerId ? total : 0
+  const displayCount = activeServerId ? count : null
+  const totalPages = Math.max(1, Math.ceil(displayTotal / pageSize))
+  const onlineCount =
+    displayCount?.online ?? displayPlayers.filter((p) => p.status === 'online').length
+  const offlineCount = Math.max(0, displayTotal - onlineCount)
 
   const handleSort = (key: 'name' | 'onlineTime' | 'ping') => {
     if (sortKey === key) {
       setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-      return
+    } else {
+      setSortKey(key)
+      setSortDirection('asc')
     }
-    setSortKey(key)
-    setSortDirection('asc')
+    setPage(1)
+  }
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value)
+    setPage(1)
+  }
+
+  const handleStatusFilterChange = (value: 'all' | 'online' | 'offline') => {
+    setStatusFilter(value)
+    setPage(1)
   }
 
   const handleMenuAction = (
@@ -177,7 +208,7 @@ export default function PlayersPage() {
             离线 {offlineCount}
           </Badge>
           <Badge variant="outline" className="text-xs">
-            总计 {total}
+            总计 {displayTotal}
           </Badge>
         </div>
       </div>
@@ -199,7 +230,7 @@ export default function PlayersPage() {
           <div className="flex-1">
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => handleQueryChange(event.target.value)}
               placeholder="搜索玩家名称"
               className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
             />
@@ -207,7 +238,9 @@ export default function PlayersPage() {
           <select
             value={statusFilter}
             onChange={(event) =>
-              setStatusFilter(event.target.value as 'all' | 'online' | 'offline')
+              handleStatusFilterChange(
+                event.target.value as 'all' | 'online' | 'offline'
+              )
             }
             className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
           >
@@ -270,7 +303,7 @@ export default function PlayersPage() {
               </tr>
             </thead>
             <tbody>
-              {players.map((player) => (
+              {displayPlayers.map((player) => (
                 <tr
                   key={player.id}
                   className="border-t border-border transition-colors hover:bg-accent/30"
@@ -349,7 +382,7 @@ export default function PlayersPage() {
                   </td>
                 </tr>
               ))}
-              {!loading && players.length === 0 && (
+              {!loading && displayPlayers.length === 0 && (
                 <tr>
                   <td
                     colSpan={7}

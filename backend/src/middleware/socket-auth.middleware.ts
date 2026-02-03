@@ -14,10 +14,8 @@ export function socketAuthMiddleware(
   socket: AuthenticatedSocket,
   next: (err?: Error) => void
 ): void {
-  let token: string | undefined;
-
   // 1. 优先从 query 参数获取 token
-  token = socket.handshake.query.token as string | undefined;
+  const token = socket.handshake.query.token as string | undefined;
 
   // 2. 从 auth 事件中获取（客户端可以在连接后发送认证）
   if (!token) {
@@ -40,7 +38,7 @@ export function socketAuthMiddleware(
           callback({ success: false, error: '无效的 socket token' });
           next(new Error('无效的 socket token'));
         }
-      } catch (error) {
+      } catch {
         callback({ success: false, error: '认证失败' });
         next(new Error('认证失败'));
       }

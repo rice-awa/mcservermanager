@@ -12,6 +12,10 @@ import { loadConfig } from '../config';
 const logger = createLogger('LogMonitorService');
 const appConfig = loadConfig();
 
+const isErrnoException = (value: unknown): value is NodeJS.ErrnoException => {
+  return typeof value === 'object' && value !== null && 'code' in value;
+};
+
 /**
  * 日志监听器（每个服务器一个实例）
  */
@@ -93,7 +97,7 @@ class LogMonitor extends EventEmitter {
     if (this.fd !== null) {
       try {
         fs.closeSync(this.fd);
-      } catch (e) {
+      } catch {
         // 忽略关闭错误
       }
       this.fd = null;
@@ -121,11 +125,12 @@ class LogMonitor extends EventEmitter {
 
     try {
       this.readNewContent();
-    } catch (error: any) {
+    } catch (error) {
       // 忽略 ENOENT 错误（文件暂时不存在）
-      if (error.code !== 'ENOENT') {
-        // 静默处理其他轮询错误
+      if (isErrnoException(error) && error.code === 'ENOENT') {
+        return;
       }
+      // 静默处理其他轮询错误
     }
   }
 
@@ -153,8 +158,8 @@ class LogMonitor extends EventEmitter {
           this.processContent(content);
         }
       }
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
+    } catch (error) {
+      if (isErrnoException(error) && error.code === 'ENOENT') {
         // 文件暂时不存在，忽略
       } else {
         throw error;

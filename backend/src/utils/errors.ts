@@ -106,7 +106,7 @@ export function errorHandler(
   err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void {
   // 记录错误
   const isOperational = err instanceof AppError && err.isOperational;

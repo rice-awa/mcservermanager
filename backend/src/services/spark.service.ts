@@ -493,9 +493,9 @@ export class SparkService {
     // 移除 § 颜色代码（Minecraft 格式）
     let cleaned = text.replace(/§[0-9a-fk-or]/gi, '');
     // 移除 ANSI 转义序列
-    cleaned = cleaned.replace(/\x1b\[[0-9;]*m/g, '');
+    cleaned = cleaned.replace(/\u001b\[[0-9;]*m/g, '');
     // 移除其他控制字符
-    cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, '');
+    cleaned = cleaned.replace(/[\u0000-\u001F\u007F]/g, '');
     return cleaned.trim();
   }
 

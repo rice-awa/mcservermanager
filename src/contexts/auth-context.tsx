@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -77,14 +78,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [])
 
-  const login = async (credentials: LoginRequest) => {
+  const login = useCallback(async (credentials: LoginRequest) => {
     const result = await loginRequest(credentials)
     setAuthTokens(result.tokens)
     setAuthUser(result.user)
     socketService.setAuthToken(result.tokens.socketToken)
-  }
+  }, [])
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     const token = getAuthState().tokens?.accessToken
     try {
       if (token) {
@@ -94,9 +95,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearAuth()
       socketService.disconnect()
     }
-  }
+  }, [])
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const socketToken = getAuthState().tokens?.socketToken
     if (!socketToken) {
       return null
@@ -105,7 +106,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthTokens(tokens)
     socketService.setAuthToken(tokens.socketToken)
     return tokens
-  }
+  }, [])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -123,6 +124,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (!context) {
