@@ -7,7 +7,11 @@
     "dev": "ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "test:connection": "ts-node test/test-connection.ts",
+    "test:console": "ts-node test/test-console.ts",
+    "test:dashboard": "ts-node test/test-dashboard.ts",
+    "test:functional": "ts-node test/run-functional-tests.ts"
   },
   "keywords": [
     "minecraft",
