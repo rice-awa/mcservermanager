@@ -1,17 +1,17 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from 'react'
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { getMockPlayers, type PlayerRow } from '@/services/mock'
+import { getPlayerCount, getPlayers } from '@/services/api.service'
+import { useServerState } from '@/hooks/use-server'
+import type { Player } from '@/types'
 
 const pageSize = 6
 
-const initialPlayers = getMockPlayers()
+type PlayerRow = Player & {
+  status: 'online' | 'offline'
+  lastSeen: string
+}
 
 const formatDuration = (seconds: number) => {
   if (seconds <= 0) {
@@ -46,7 +46,17 @@ const pingColor = (ping: number) => {
   return 'text-destructive'
 }
 
+const buildPlayerRow = (player: Player): PlayerRow => {
+  const isOffline = player.ping < 0
+  return {
+    ...player,
+    status: isOffline ? 'offline' : 'online',
+    lastSeen: isOffline ? '离线' : '在线',
+  }
+}
+
 export default function PlayersPage() {
+  const { activeServerId, activeServerName } = useServerState()
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>(
     'all'
@@ -54,44 +64,69 @@ export default function PlayersPage() {
   const [sortKey, setSortKey] = useState<'name' | 'onlineTime' | 'ping'>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(1)
+  const [players, setPlayers] = useState<PlayerRow[]>([])
+  const [total, setTotal] = useState(0)
+  const [count, setCount] = useState<{ online: number; max: number } | null>(
+    null
+  )
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setPage(1)
-  }, [query, statusFilter])
+  }, [query, statusFilter, sortKey, sortDirection])
 
-  const filteredPlayers = useMemo(() => {
-    const lowerQuery = query.trim().toLowerCase()
-    return initialPlayers.filter((player) => {
-      const matchesQuery = lowerQuery
-        ? player.name.toLowerCase().includes(lowerQuery)
-        : true
-      const matchesStatus =
-        statusFilter === 'all' ? true : player.status === statusFilter
-      return matchesQuery && matchesStatus
+  useEffect(() => {
+    if (!activeServerId) {
+      setPlayers([])
+      setTotal(0)
+      setCount(null)
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    getPlayers(activeServerId, {
+      q: query.trim() || undefined,
+      status: statusFilter,
+      page,
+      pageSize,
+      sortBy: sortKey,
+      sortOrder: sortDirection,
     })
-  }, [query, statusFilter])
+      .then((result) => {
+        setPlayers(result.items.map(buildPlayerRow))
+        setTotal(result.total)
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : '加载玩家失败'
+        setError(message)
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }, [
+    activeServerId,
+    query,
+    statusFilter,
+    page,
+    sortKey,
+    sortDirection,
+  ])
 
-  const sortedPlayers = useMemo(() => {
-    const sorted = [...filteredPlayers]
-    sorted.sort((a, b) => {
-      let result = 0
-      if (sortKey === 'name') {
-        result = a.name.localeCompare(b.name)
-      } else if (sortKey === 'onlineTime') {
-        result = a.onlineTime - b.onlineTime
-      } else {
-        result = a.ping - b.ping
-      }
-      return sortDirection === 'asc' ? result : -result
-    })
-    return sorted
-  }, [filteredPlayers, sortKey, sortDirection])
+  useEffect(() => {
+    if (!activeServerId) {
+      return
+    }
+    getPlayerCount(activeServerId)
+      .then((result) => setCount(result))
+      .catch(() => setCount(null))
+  }, [activeServerId])
 
-  const totalPages = Math.max(1, Math.ceil(sortedPlayers.length / pageSize))
-  const pagedPlayers = sortedPlayers.slice(
-    (page - 1) * pageSize,
-    page * pageSize
-  )
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const onlineCount = count?.online ?? players.filter((p) => p.status === 'online').length
+  const offlineCount = Math.max(0, total - onlineCount)
 
   const handleSort = (key: 'name' | 'onlineTime' | 'ping') => {
     if (sortKey === key) {
@@ -101,10 +136,6 @@ export default function PlayersPage() {
     setSortKey(key)
     setSortDirection('asc')
   }
-
-  const onlineCount = filteredPlayers.filter((player) => player.status === 'online')
-    .length
-  const offlineCount = filteredPlayers.length - onlineCount
 
   const handleMenuAction = (
     action: 'message' | 'detail' | 'ban',
@@ -132,6 +163,11 @@ export default function PlayersPage() {
         <div>
           <h1 className="text-2xl font-bold">玩家管理</h1>
           <p className="mt-2 text-muted-foreground">在线玩家列表和管理</p>
+          {activeServerName ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              当前服务器：{activeServerName}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Badge variant="outline" className="text-xs">
@@ -141,10 +177,22 @@ export default function PlayersPage() {
             离线 {offlineCount}
           </Badge>
           <Badge variant="outline" className="text-xs">
-            总计 {filteredPlayers.length}
+            总计 {total}
           </Badge>
         </div>
       </div>
+
+      {error ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {!activeServerId ? (
+        <div className="rounded-lg border border-dashed border-border bg-muted/30 px-6 py-10 text-center text-sm text-muted-foreground">
+          尚未选择服务器，请先在设置中连接服务器。
+        </div>
+      ) : null}
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -222,7 +270,7 @@ export default function PlayersPage() {
               </tr>
             </thead>
             <tbody>
-              {pagedPlayers.map((player) => (
+              {players.map((player) => (
                 <tr
                   key={player.id}
                   className="border-t border-border transition-colors hover:bg-accent/30"
@@ -237,7 +285,7 @@ export default function PlayersPage() {
                   <td className="px-4 py-3">
                     <div className="font-medium">{player.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {player.uuid}
+                      {player.uuid || '--'}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -301,13 +349,23 @@ export default function PlayersPage() {
                   </td>
                 </tr>
               ))}
-              {pagedPlayers.length === 0 && (
+              {!loading && players.length === 0 && (
                 <tr>
                   <td
                     colSpan={7}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
                     未找到符合条件的玩家
+                  </td>
+                </tr>
+              )}
+              {loading && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-4 py-8 text-center text-sm text-muted-foreground"
+                  >
+                    加载中...
                   </td>
                 </tr>
               )}

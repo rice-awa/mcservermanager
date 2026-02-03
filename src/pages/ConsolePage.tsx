@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
-import type { ConsoleMessage } from '@/types'
+import type { ConsoleMessage, ConnectionStatus } from '@/types'
+import { useAuth } from '@/contexts/auth-context'
+import { useServerState } from '@/hooks/use-server'
+import { socketService } from '@/services/socket.service'
 import {
   consoleCommandCatalog,
   consoleHistoryStorageKey,
@@ -11,6 +14,32 @@ import {
   consoleMessageTypeStyles,
   getConsoleInitialMessages,
 } from '@/services/mock'
+
+const statusMeta: Record<
+  ConnectionStatus,
+  { label: string; color: string; dot: string }
+> = {
+  disconnected: {
+    label: '未连接',
+    color: 'text-muted-foreground',
+    dot: 'bg-gray-400',
+  },
+  connecting: {
+    label: '连接中',
+    color: 'text-amber-500',
+    dot: 'bg-amber-500',
+  },
+  connected: {
+    label: '已连接',
+    color: 'text-emerald-500',
+    dot: 'bg-emerald-500',
+  },
+  error: {
+    label: '连接失败',
+    color: 'text-destructive',
+    dot: 'bg-destructive',
+  },
+}
 
 const createId = (() => {
   let seed = 0
@@ -48,6 +77,8 @@ function getStoredHistory(): string[] {
 }
 
 export default function ConsolePage() {
+  const { tokens } = useAuth()
+  const { activeServerId, activeServerName, connectionStatus } = useServerState()
   const [messages, setMessages] = useState<ConsoleMessage[]>(
     getConsoleInitialMessages
   )
@@ -58,6 +89,45 @@ export default function ConsolePage() {
   const draftRef = useRef('')
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    socketService.connect(undefined, tokens?.socketToken)
+
+    const handleCommandOutput = (data: {
+      type: string
+      payload: { message: ConsoleMessage }
+    }) => {
+      if (data?.payload?.message) {
+        appendMessage(data.payload.message)
+      }
+    }
+
+    const handleLegacyMessage = (data: {
+      id: string
+      type: ConsoleMessage['type']
+      content: string
+      timestamp: string | Date
+    }) => {
+      const timestamp =
+        typeof data.timestamp === 'string'
+          ? new Date(data.timestamp).getTime()
+          : new Date(data.timestamp).getTime()
+      appendMessage({
+        id: data.id,
+        timestamp,
+        type: data.type,
+        content: data.content,
+      })
+    }
+
+    socketService.on('commandOutput', handleCommandOutput)
+    socketService.on('console:message', handleLegacyMessage)
+
+    return () => {
+      socketService.off('commandOutput', handleCommandOutput)
+      socketService.off('console:message', handleLegacyMessage)
+    }
+  }, [tokens?.socketToken, appendMessage])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -121,9 +191,9 @@ export default function ConsolePage() {
     })
   }
 
-  const appendMessage = (message: ConsoleMessage) => {
+  const appendMessage = useCallback((message: ConsoleMessage) => {
     setMessages((prev) => [...prev, message])
-  }
+  }, [])
 
   const handleSend = () => {
     const trimmed = inputValue.trim()
@@ -131,20 +201,27 @@ export default function ConsolePage() {
       return
     }
 
-    const timestamp = Date.now()
-    appendMessage({
-      id: createId(),
-      timestamp,
-      type: 'command',
-      content: trimmed,
-    })
-    appendMessage({
-      id: createId(),
-      timestamp: timestamp + 1,
-      type: 'output',
-      content: `已发送命令：${trimmed}`,
-    })
+    if (!activeServerId) {
+      appendMessage({
+        id: createId(),
+        timestamp: Date.now(),
+        type: 'error',
+        content: '未选择服务器，请先在设置中连接服务器。',
+      })
+      return
+    }
 
+    if (!socketService.isConnected()) {
+      appendMessage({
+        id: createId(),
+        timestamp: Date.now(),
+        type: 'error',
+        content: 'WebSocket 未连接，无法发送命令。',
+      })
+      return
+    }
+
+    socketService.executeCommand(activeServerId, trimmed)
     pushHistory(trimmed)
     setInputValue('')
     setHistoryIndex(-1)
@@ -242,11 +319,21 @@ export default function ConsolePage() {
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">当前服务器</span>
-            <span className="font-medium">未连接</span>
+            <span className="font-medium">
+              {activeServerName || activeServerId || '未选择'}
+            </span>
           </div>
-          <Badge variant="outline" className="text-xs">
-            <span className="mr-1.5 h-2 w-2 rounded-full bg-gray-400" />
-            未连接
+          <Badge
+            variant="outline"
+            className={cn('text-xs', statusMeta[connectionStatus].color)}
+          >
+            <span
+              className={cn(
+                'mr-1.5 h-2 w-2 rounded-full',
+                statusMeta[connectionStatus].dot
+              )}
+            />
+            {statusMeta[connectionStatus].label}
           </Badge>
         </div>
       </div>

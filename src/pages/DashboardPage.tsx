@@ -10,23 +10,33 @@ import {
   AreaChart,
   Area,
 } from 'recharts'
-import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { ServerStats, TPSData } from '@/types'
 import {
   dashboardDefaultRefreshInterval,
   dashboardRefreshIntervals,
-  getInitialDashboardState,
 } from '@/services/mock'
+import { getStats, getStatsHistory } from '@/services/api.service'
+import { useServerState } from '@/hooks/use-server'
+
+const emptyStats: ServerStats = {
+  tps: 0,
+  cpu: 0,
+  memory: {
+    used: 0,
+    max: 0,
+    allocated: 0,
+  },
+  onlinePlayers: 0,
+  maxPlayers: 0,
+  loadedChunks: 0,
+  version: 'Unknown',
+  gamemode: 'Unknown',
+  difficulty: 'Unknown',
+}
 
 type MetricPoint = { timestamp: number; value: number }
 type MemoryPoint = { timestamp: number; used: number; allocated: number }
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max)
-
-const randomDelta = (variance: number) =>
-  (Math.random() - 0.5) * variance * 2
 
 const formatTimeShort = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString('zh-CN', {
@@ -37,7 +47,12 @@ const formatTimeShort = (timestamp: number) =>
 
 const formatNumber = (value: number, digits = 2) => value.toFixed(digits)
 
-const formatMemory = (value: number) => `${formatNumber(value, 1)} GB`
+const formatMemory = (value: number) => `${formatNumber(value / 1024, 1)} GB`
+
+const appendHistory = <T,>(items: T[], next: T, limit: number) => {
+  const updated = [...items, next]
+  return updated.length > limit ? updated.slice(-limit) : updated
+}
 
 function StatCard({
   title,
@@ -67,23 +82,17 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-  const initialDashboardState = useMemo(() => getInitialDashboardState(), [])
-  const [stats, setStats] = useState<ServerStats>(
-    initialDashboardState.stats
-  )
-  const [tpsHistory, setTpsHistory] = useState<TPSData[]>(
-    initialDashboardState.tpsHistory
-  )
-  const [cpuHistory, setCpuHistory] = useState<MetricPoint[]>(
-    initialDashboardState.cpuHistory
-  )
-  const [memoryHistory, setMemoryHistory] = useState<MemoryPoint[]>(
-    initialDashboardState.memoryHistory
-  )
+  const { activeServerId, activeServerName } = useServerState()
+  const [stats, setStats] = useState<ServerStats>(emptyStats)
+  const [tpsHistory, setTpsHistory] = useState<TPSData[]>([])
+  const [cpuHistory, setCpuHistory] = useState<MetricPoint[]>([])
+  const [memoryHistory, setMemoryHistory] = useState<MemoryPoint[]>([])
   const [refreshInterval, setRefreshInterval] = useState(
     dashboardDefaultRefreshInterval
   )
   const [lastUpdated, setLastUpdated] = useState(Date.now())
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const tpsStatus = useMemo(() => {
     if (stats.tps >= 18) {
@@ -106,68 +115,92 @@ export default function DashboardPage() {
   }, [stats.cpu])
 
   const memoryUsagePercent = useMemo(() => {
+    if (stats.memory.max <= 0) {
+      return 0
+    }
     return (stats.memory.used / stats.memory.max) * 100
   }, [stats.memory])
 
-  const refreshData = useCallback(() => {
-    const now = Date.now()
-    let nextTps = 0
-    let nextCpu = 0
-    let nextUsed = 0
-    let nextAllocated = 0
-    let nextPlayers = 0
-    let nextChunks = 0
+  const loadHistory = useCallback(async () => {
+    if (!activeServerId) {
+      setStats(emptyStats)
+      setTpsHistory([])
+      setCpuHistory([])
+      setMemoryHistory([])
+      return
+    }
 
-    setStats((prev) => {
-      nextTps = clamp(prev.tps + randomDelta(0.5), 12, 20)
-      nextCpu = clamp(prev.cpu + randomDelta(6), 10, 95)
-      nextUsed = clamp(prev.memory.used + randomDelta(0.6), 1, prev.memory.max)
-      nextAllocated = clamp(
-        prev.memory.allocated + randomDelta(0.6),
-        nextUsed,
-        prev.memory.max
-      )
-      nextPlayers = clamp(
-        prev.onlinePlayers + Math.round(randomDelta(1)),
-        0,
-        prev.maxPlayers
-      )
-      nextChunks = Math.max(0, Math.round(prev.loadedChunks + randomDelta(120)))
-      return {
-        ...prev,
-        tps: nextTps,
-        cpu: nextCpu,
-        memory: {
-          ...prev.memory,
-          used: nextUsed,
-          allocated: nextAllocated,
-        },
-        onlinePlayers: nextPlayers,
-        loadedChunks: nextChunks,
-      }
-    })
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await getStatsHistory(activeServerId)
+      setStats(data.stats)
+      setTpsHistory(data.tpsHistory)
+      setCpuHistory(data.cpuHistory)
+      setMemoryHistory(data.memoryHistory)
+      setLastUpdated(Date.now())
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '获取状态失败'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }, [activeServerId])
 
-    setTpsHistory((prev) => [
-      ...prev.slice(1),
-      { timestamp: now, tps: nextTps },
-    ])
-    setCpuHistory((prev) => [
-      ...prev.slice(1),
-      { timestamp: now, value: nextCpu },
-    ])
-    setMemoryHistory((prev) => [
-      ...prev.slice(1),
-      { timestamp: now, used: nextUsed, allocated: nextAllocated },
-    ])
-    setLastUpdated(now)
-  }, [])
+  const refreshData = useCallback(async () => {
+    if (!activeServerId) {
+      return
+    }
+
+    try {
+      const nextStats = await getStats(activeServerId)
+      const limit = Math.max(
+        20,
+        tpsHistory.length,
+        cpuHistory.length,
+        memoryHistory.length
+      )
+      const now = Date.now()
+
+      setStats(nextStats)
+      setTpsHistory((prev) =>
+        appendHistory(prev, { timestamp: now, tps: nextStats.tps }, limit)
+      )
+      setCpuHistory((prev) =>
+        appendHistory(prev, { timestamp: now, value: nextStats.cpu }, limit)
+      )
+      setMemoryHistory((prev) =>
+        appendHistory(
+          prev,
+          {
+            timestamp: now,
+            used: nextStats.memory.used,
+            allocated: nextStats.memory.allocated,
+          },
+          limit
+        )
+      )
+      setLastUpdated(now)
+      setError(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '刷新失败'
+      setError(message)
+    }
+  }, [activeServerId, tpsHistory.length, cpuHistory.length, memoryHistory.length])
 
   useEffect(() => {
+    void loadHistory()
+  }, [loadHistory])
+
+  useEffect(() => {
+    if (!activeServerId) {
+      return
+    }
     const timer = window.setInterval(() => {
-      refreshData()
+      void refreshData()
     }, refreshInterval)
     return () => window.clearInterval(timer)
-  }, [refreshInterval, refreshData])
+  }, [refreshInterval, refreshData, activeServerId])
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
@@ -175,6 +208,11 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">仪表盘</h1>
           <p className="mt-2 text-muted-foreground">服务器状态监控</p>
+          {activeServerName ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              当前服务器：{activeServerName}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <div className="text-muted-foreground">
@@ -193,7 +231,7 @@ export default function DashboardPage() {
           </select>
           <button
             type="button"
-            onClick={refreshData}
+            onClick={() => void refreshData()}
             className="h-9 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             立即刷新
@@ -201,187 +239,147 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {error ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {!activeServerId ? (
+        <div className="rounded-lg border border-dashed border-border bg-muted/30 px-6 py-10 text-center text-sm text-muted-foreground">
+          尚未选择服务器，请先在设置中连接服务器。
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-4">
         <StatCard
           title="TPS"
-          value={formatNumber(stats.tps)}
+          value={formatNumber(stats.tps, 2)}
           hint={tpsStatus.label}
-          trend="过去 5 分钟趋势"
           className={tpsStatus.color}
         />
         <StatCard
-          title="CPU 使用率"
+          title="CPU"
           value={`${formatNumber(stats.cpu, 1)}%`}
           hint={cpuStatus.label}
-          trend="当前核心负载"
           className={cpuStatus.color}
         />
         <StatCard
-          title="内存占用"
-          value={`${formatNumber(memoryUsagePercent, 1)}%`}
-          hint={`${formatMemory(stats.memory.used)} / ${formatMemory(
+          title="内存"
+          value={`${formatMemory(stats.memory.used)} / ${formatMemory(
             stats.memory.max
           )}`}
-          trend={`已分配 ${formatMemory(stats.memory.allocated)}`}
+          hint={`${formatNumber(memoryUsagePercent, 1)}%`}
         />
         <StatCard
           title="在线玩家"
           value={`${stats.onlinePlayers} / ${stats.maxPlayers}`}
-          hint="实时在线"
-          trend={`当前区块 ${stats.loadedChunks.toLocaleString()}`}
+          hint={loading ? '更新中...' : undefined}
         />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-medium">TPS 趋势</div>
-            <Badge variant="outline" className="text-xs">
-              {tpsStatus.label}
-            </Badge>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={tpsHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis
-                  dataKey="timestamp"
-                  tickFormatter={formatTimeShort}
-                  tick={{ fontSize: 10 }}
-                />
-                <YAxis domain={[0, 20]} tick={{ fontSize: 10 }} />
-                <Tooltip
-                  labelFormatter={(value) => formatTimeShort(Number(value))}
-                  formatter={(value) => [`${Number(value).toFixed(2)} TPS`, 'TPS']}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="tps"
-                  stroke="var(--color-primary)"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="rounded-lg border bg-card p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-medium">CPU 历史趋势</div>
-            <Badge variant="outline" className="text-xs">
-              {cpuStatus.label}
-            </Badge>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={cpuHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis
-                  dataKey="timestamp"
-                  tickFormatter={formatTimeShort}
-                  tick={{ fontSize: 10 }}
-                />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
-                <Tooltip
-                  labelFormatter={(value) => formatTimeShort(Number(value))}
-                  formatter={(value) => [`${Number(value).toFixed(1)}%`, 'CPU']}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#f59e0b"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-lg border bg-card p-4 lg:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-medium">内存使用情况</div>
-            <Badge variant="outline" className="text-xs">
-              {formatNumber(memoryUsagePercent, 1)}%
-            </Badge>
-          </div>
+          <div className="mb-4 text-sm font-medium">TPS 曲线</div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={memoryHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+              <LineChart data={tpsHistory} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="timestamp"
                   tickFormatter={formatTimeShort}
-                  tick={{ fontSize: 10 }}
+                  className="text-xs"
+                  stroke="currentColor"
                 />
-                <YAxis
-                  domain={[0, stats.memory.max]}
-                  tickFormatter={(value) => `${value} GB`}
-                  tick={{ fontSize: 10 }}
-                />
+                <YAxis domain={[0, 20]} className="text-xs" stroke="currentColor" />
                 <Tooltip
-                  labelFormatter={(value) => formatTimeShort(Number(value))}
-                  formatter={(value, name) => [
-                    `${Number(value).toFixed(1)} GB`,
-                    name === 'used' ? '已使用' : '已分配',
-                  ]}
+                  formatter={(value: number) => [value.toFixed(2), 'TPS']}
+                  labelFormatter={(value: number) => formatTimeShort(value)}
+                />
+                <Line type="monotone" dataKey="tps" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-card p-4">
+          <div className="mb-4 text-sm font-medium">CPU 曲线</div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={cpuHistory} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={formatTimeShort}
+                  className="text-xs"
+                  stroke="currentColor"
+                />
+                <YAxis domain={[0, 100]} className="text-xs" stroke="currentColor" />
+                <Tooltip
+                  formatter={(value: number) => [`${value.toFixed(1)}%`, 'CPU']}
+                  labelFormatter={(value: number) => formatTimeShort(value)}
                 />
                 <Area
                   type="monotone"
-                  dataKey="allocated"
-                  stroke="#60a5fa"
-                  fill="rgba(96, 165, 250, 0.3)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="used"
-                  stroke="#22c55e"
-                  fill="rgba(34, 197, 94, 0.35)"
+                  dataKey="value"
+                  stroke="hsl(var(--primary))"
+                  fillOpacity={1}
+                  fill="url(#cpuGradient)"
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
+      </div>
 
-        <div className="rounded-lg border bg-card p-4">
-          <div className="mb-4 text-sm font-medium">服务器信息</div>
-          <div className="space-y-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">版本</span>
-              <span className="font-medium">{stats.version}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">游戏模式</span>
-              <span className="font-medium">{stats.gamemode}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">难度</span>
-              <span className="font-medium">{stats.difficulty}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">已加载区块</span>
-              <span className="font-medium">
-                {stats.loadedChunks.toLocaleString()}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">在线玩家</span>
-              <span className="font-medium">
-                {stats.onlinePlayers}/{stats.maxPlayers}
-              </span>
-            </div>
-            <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              自动刷新间隔：
-              {
-                dashboardRefreshIntervals.find(
-                  (item) => item.value === refreshInterval
-                )?.label
-              }
-            </div>
-          </div>
+      <div className="rounded-lg border bg-card p-4">
+        <div className="mb-4 text-sm font-medium">内存曲线</div>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={memoryHistory} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <defs>
+                <linearGradient id="memoryGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis
+                dataKey="timestamp"
+                tickFormatter={formatTimeShort}
+                className="text-xs"
+                stroke="currentColor"
+              />
+              <YAxis className="text-xs" stroke="currentColor" />
+              <Tooltip
+                formatter={(value: number, name: string) => [
+                  formatMemory(value),
+                  name === 'used' ? '已使用' : '已分配',
+                ]}
+                labelFormatter={(value: number) => formatTimeShort(value)}
+              />
+              <Area
+                type="monotone"
+                dataKey="used"
+                stroke="hsl(var(--primary))"
+                fillOpacity={1}
+                fill="url(#memoryGradient)"
+              />
+              <Area
+                type="monotone"
+                dataKey="allocated"
+                stroke="hsl(var(--primary))"
+                fillOpacity={0.2}
+                fill="url(#memoryGradient)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>

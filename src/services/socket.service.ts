@@ -3,27 +3,34 @@
  * 封装 Socket.IO 连接和事件处理，与后端对接文档保持一致
  */
 import { io, Socket } from 'socket.io-client';
-import type { 
-  ConsoleMessage, 
-  ServerStats, 
-  Player, 
-  ConnectionStatus 
-} from '@/types';
+import type {
+  ConsoleMessage,
+  ServerStats,
+  Player,
+  ConnectionStatus,
+  ServerConfig,
+  TestConnectionResult,
+} from '@/types'
 
 // WebSocket 基础配置
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
+const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001'
 
 /**
  * WebSocket 事件回调类型
  */
 export interface SocketEventCallbacks {
-  onConnect?: () => void;
-  onDisconnect?: (reason: string) => void;
-  onError?: (error: Error) => void;
-  onConsoleMessage?: (message: ConsoleMessage) => void;
-  onStatsUpdate?: (stats: ServerStats) => void;
-  onPlayerUpdate?: (players: Player[]) => void;
-  onConnectionStatus?: (status: ConnectionStatus, message?: string) => void;
+  onConnect?: () => void
+  onDisconnect?: (reason: string) => void
+  onError?: (error: Error) => void
+  onConsoleMessage?: (message: ConsoleMessage) => void
+  onStatsUpdate?: (stats: ServerStats) => void
+  onPlayerUpdate?: (players: Player[]) => void
+  onConnectionStatus?: (
+    serverId: string,
+    status: ConnectionStatus,
+    message?: string
+  ) => void
+  onTestResult?: (result: TestConnectionResult) => void
 }
 
 /**
@@ -31,24 +38,31 @@ export interface SocketEventCallbacks {
  * 单例模式，全局只有一个实例
  */
 class SocketService {
-  private socket: Socket | null = null;
-  private callbacks: SocketEventCallbacks = {};
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private currentServerId: string | null = null;
+  private socket: Socket | null = null
+  private callbacks: SocketEventCallbacks = {}
+  private reconnectAttempts = 0
+  private maxReconnectAttempts = 5
+  private currentServerId: string | null = null
+  private authToken: string | null = null
 
   /**
    * 连接到 WebSocket 服务器
    */
-  connect(callbacks?: SocketEventCallbacks): void {
+  connect(callbacks?: SocketEventCallbacks, token?: string): void {
     if (this.socket?.connected) {
-      console.log('[SocketService] Already connected');
-      return;
+      if (token) {
+        this.authenticate(token)
+      }
+      return
     }
 
     // 合并回调
     if (callbacks) {
-      this.callbacks = { ...this.callbacks, ...callbacks };
+      this.callbacks = { ...this.callbacks, ...callbacks }
+    }
+
+    if (token) {
+      this.authToken = token
     }
 
     // 创建 Socket.IO 连接
@@ -59,10 +73,10 @@ class SocketService {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 10000,
-    });
+      query: this.authToken ? { token: this.authToken } : undefined,
+    })
 
-    this.setupEventHandlers();
-    console.log('[SocketService] Connecting to:', WS_URL);
+    this.setupEventHandlers()
   }
 
   /**
@@ -70,10 +84,9 @@ class SocketService {
    */
   disconnect(): void {
     if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-      this.currentServerId = null;
-      console.log('[SocketService] Disconnected');
+      this.socket.disconnect()
+      this.socket = null
+      this.currentServerId = null
     }
   }
 
@@ -81,14 +94,29 @@ class SocketService {
    * 判断是否已连接
    */
   isConnected(): boolean {
-    return this.socket?.connected ?? false;
+    return this.socket?.connected ?? false
   }
 
   /**
    * 更新事件回调
    */
   setCallbacks(callbacks: SocketEventCallbacks): void {
-    this.callbacks = { ...this.callbacks, ...callbacks };
+    this.callbacks = { ...this.callbacks, ...callbacks }
+  }
+
+  setAuthToken(token: string | null): void {
+    this.authToken = token
+    if (token && this.socket?.connected) {
+      this.authenticate(token)
+    }
+  }
+
+  authenticate(token: string): void {
+    this.authToken = token
+    if (!this.socket?.connected) {
+      return
+    }
+    this.socket.emit('auth', { token })
   }
 
   /**
@@ -99,63 +127,73 @@ class SocketService {
 
     // 连接成功
     this.socket.on('connect', () => {
-      console.log('[SocketService] Connected, socket ID:', this.socket?.id);
-      this.reconnectAttempts = 0;
-      this.callbacks.onConnect?.();
-    });
+      this.reconnectAttempts = 0
+      if (this.authToken) {
+        this.socket?.emit('auth', { token: this.authToken })
+      }
+      this.callbacks.onConnect?.()
+    })
 
     // 断开连接
     this.socket.on('disconnect', (reason: string) => {
-      console.log('[SocketService] Disconnected:', reason);
-      this.callbacks.onDisconnect?.(reason);
-    });
+      this.callbacks.onDisconnect?.(reason)
+    })
 
     // 连接错误
     this.socket.on('connect_error', (error: Error) => {
-      console.error('[SocketService] Connection error:', error.message);
-      this.reconnectAttempts++;
-      this.callbacks.onError?.(error);
-    });
+      this.reconnectAttempts++
+      this.callbacks.onError?.(error)
+    })
 
     // 重连失败
     this.socket.on('reconnect_failed', () => {
-      console.error('[SocketService] Reconnection failed after max attempts');
-      const error = new Error('无法连接到服务器');
-      this.callbacks.onError?.(error);
-    });
+      const error = new Error('无法连接到服务器')
+      this.callbacks.onError?.(error)
+    })
 
     // ============ 业务事件（对接文档 4.2） ============
 
     // 控制台消息输出
     this.socket.on('commandOutput', (data: { type: string; payload: { message: ConsoleMessage } }) => {
-      console.log('[SocketService] Console message:', data.payload.message);
-      this.callbacks.onConsoleMessage?.(data.payload.message);
-    });
+      this.callbacks.onConsoleMessage?.(data.payload.message)
+    })
+
+    this.socket.on('console:message', (data: { id: string; type: ConsoleMessage['type']; content: string; timestamp: string | Date }) => {
+      const timestamp = typeof data.timestamp === 'string'
+        ? new Date(data.timestamp).getTime()
+        : new Date(data.timestamp).getTime()
+      this.callbacks.onConsoleMessage?.({
+        id: data.id,
+        timestamp,
+        type: data.type,
+        content: data.content,
+      })
+    })
 
     // 服务器状态更新
     this.socket.on('statsUpdate', (data: { type: string; payload: { stats: ServerStats } }) => {
-      console.log('[SocketService] Stats update:', data.payload.stats);
-      this.callbacks.onStatsUpdate?.(data.payload.stats);
-    });
+      this.callbacks.onStatsUpdate?.(data.payload.stats)
+    })
 
     // 玩家列表更新
     this.socket.on('playerUpdate', (data: { type: string; payload: { items: Player[] } }) => {
-      console.log('[SocketService] Player update:', data.payload.items);
-      this.callbacks.onPlayerUpdate?.(data.payload.items);
-    });
+      this.callbacks.onPlayerUpdate?.(data.payload.items)
+    })
 
     // 错误消息
     this.socket.on('error', (data: { type: string; payload: { message: string; code?: string } }) => {
-      console.error('[SocketService] Server error:', data.payload.message);
-      const error = new Error(data.payload.message);
-      this.callbacks.onError?.(error);
-    });
+      const error = new Error(data.payload.message)
+      this.callbacks.onError?.(error)
+    })
 
     // 服务器连接状态变化
-    this.socket.on('server:status', (data: { serverId: string; status: ConnectionStatus; message?: string }) => {
-      console.log('[SocketService] Server status:', data);
-      this.callbacks.onConnectionStatus?.(data.status, data.message);
-    });
+    this.socket.on('server:status', (data: { serverId: string; status: ConnectionStatus; error?: string }) => {
+      this.callbacks.onConnectionStatus?.(data.serverId, data.status, data.error)
+    })
+
+    this.socket.on('server:testResult', (data: TestConnectionResult) => {
+      this.callbacks.onTestResult?.(data)
+    })
   }
 
   // ============ 发送事件到服务器（对接文档 4.1） ============
@@ -165,13 +203,11 @@ class SocketService {
    */
   connectToServer(serverId: string): void {
     if (!this.socket?.connected) {
-      console.error('[SocketService] Not connected to WebSocket server');
-      return;
+      return
     }
 
-    console.log('[SocketService] Connecting to server:', serverId);
-    this.currentServerId = serverId;
-    this.socket.emit('server:connect', { serverId });
+    this.currentServerId = serverId
+    this.socket.emit('server:connect', { serverId })
   }
 
   /**
@@ -179,12 +215,11 @@ class SocketService {
    */
   disconnectFromServer(serverId: string): void {
     if (!this.socket?.connected) {
-      return;
+      return
     }
 
-    console.log('[SocketService] Disconnecting from server:', serverId);
-    this.socket.emit('server:disconnect', { serverId });
-    this.currentServerId = null;
+    this.socket.emit('server:disconnect', { serverId })
+    this.currentServerId = null
   }
 
   /**
@@ -192,12 +227,10 @@ class SocketService {
    */
   executeCommand(serverId: string, command: string): void {
     if (!this.socket?.connected) {
-      console.error('[SocketService] Not connected to WebSocket server');
-      return;
+      return
     }
 
-    console.log('[SocketService] Executing command:', command);
-    this.socket.emit('console:command', { serverId, command });
+    this.socket.emit('console:command', { serverId, command })
   }
 
   /**
@@ -205,12 +238,10 @@ class SocketService {
    */
   subscribeStats(serverId: string): void {
     if (!this.socket?.connected) {
-      console.error('[SocketService] Not connected to WebSocket server');
-      return;
+      return
     }
 
-    console.log('[SocketService] Subscribing to stats:', serverId);
-    this.socket.emit('stats:subscribe', { serverId });
+    this.socket.emit('stats:subscribe', { serverId })
   }
 
   /**
@@ -218,31 +249,57 @@ class SocketService {
    */
   unsubscribeStats(serverId: string): void {
     if (!this.socket?.connected) {
-      return;
+      return
     }
 
-    console.log('[SocketService] Unsubscribing from stats:', serverId);
-    this.socket.emit('stats:unsubscribe', { serverId });
+    this.socket.emit('stats:unsubscribe', { serverId })
   }
 
   /**
    * 测试服务器连接
    */
-  testConnection(config: unknown): void {
+  testConnection(config: Partial<ServerConfig>): void {
     if (!this.socket?.connected) {
-      console.error('[SocketService] Not connected to WebSocket server');
-      return;
+      return
     }
 
-    console.log('[SocketService] Testing connection');
-    this.socket.emit('server:test', config);
+    this.socket.emit('server:test', { config })
+  }
+
+  requestTestConnection(
+    config: Partial<ServerConfig>,
+    timeoutMs: number = 10000
+  ): Promise<TestConnectionResult> {
+    if (!this.socket?.connected) {
+      return Promise.reject(new Error('WebSocket 未连接'))
+    }
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup()
+        reject(new Error('测试连接超时'))
+      }, timeoutMs)
+
+      const handleResult = (result: TestConnectionResult) => {
+        cleanup()
+        resolve(result)
+      }
+
+      const cleanup = () => {
+        clearTimeout(timer)
+        this.socket?.off('server:testResult', handleResult)
+      }
+
+      this.socket?.on('server:testResult', handleResult)
+      this.socket?.emit('server:test', { config })
+    })
   }
 
   /**
    * 获取当前连接的服务器 ID
    */
   getCurrentServerId(): string | null {
-    return this.currentServerId;
+    return this.currentServerId
   }
 
   /**
@@ -250,11 +307,10 @@ class SocketService {
    */
   emit(event: string, data?: unknown): void {
     if (!this.socket?.connected) {
-      console.error('[SocketService] Not connected to WebSocket server');
-      return;
+      return
     }
 
-    this.socket.emit(event, data);
+    this.socket.emit(event, data)
   }
 
   /**
@@ -262,11 +318,10 @@ class SocketService {
    */
   on(event: string, callback: (...args: unknown[]) => void): void {
     if (!this.socket) {
-      console.error('[SocketService] Socket not initialized');
-      return;
+      return
     }
 
-    this.socket.on(event, callback);
+    this.socket.on(event, callback)
   }
 
   /**
@@ -274,17 +329,17 @@ class SocketService {
    */
   off(event: string, callback?: (...args: unknown[]) => void): void {
     if (!this.socket) {
-      return;
+      return
     }
 
     if (callback) {
-      this.socket.off(event, callback);
+      this.socket.off(event, callback)
     } else {
-      this.socket.off(event);
+      this.socket.off(event)
     }
   }
 }
 
 // 导出单例实例
-export const socketService = new SocketService();
-export default socketService;
+export const socketService = new SocketService()
+export default socketService

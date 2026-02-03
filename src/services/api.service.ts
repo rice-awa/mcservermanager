@@ -2,123 +2,143 @@
  * API 客户端服务
  * 封装所有 REST API 调用，与后端对接文档保持一致
  */
-import type { 
-  ServerConfig, 
-  Player, 
-  ServerStats, 
+import type {
+  ServerConfig,
+  Player,
+  ServerStats,
   TPSData,
   ApiSuccessResponse,
-  ApiErrorResponse
-} from '@/types';
+  ApiErrorResponse,
+  ApiResponse,
+} from '@/types'
+import { getAuthTokens, setAuthTokens, clearAuth } from '@/services/auth.store'
+import { refreshTokens } from '@/services/auth.service'
+import { ApiError } from '@/services/api-error'
 
 // API 基础配置
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-
-/**
- * 通用 API 响应类型
- */
-type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
 
 /**
  * 分页响应
  */
 export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  page: number;
-  pageSize: number;
+  items: T[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 /**
  * 玩家查询参数
  */
 export interface PlayerQueryParams {
-  q?: string;
-  status?: 'online' | 'offline' | 'all';
-  page?: number;
-  pageSize?: number;
-  sortBy?: 'name' | 'onlineTime' | 'ping';
-  sortOrder?: 'asc' | 'desc';
+  q?: string
+  status?: 'online' | 'offline' | 'all'
+  page?: number
+  pageSize?: number
+  sortBy?: 'name' | 'onlineTime' | 'ping'
+  sortOrder?: 'asc' | 'desc'
 }
 
 /**
  * 仪表盘历史数据
  */
 export interface DashboardHistoryData {
-  stats: ServerStats;
-  tpsHistory: TPSData[];
-  cpuHistory: Array<{ timestamp: number; value: number }>;
-  memoryHistory: Array<{ timestamp: number; used: number; allocated: number }>;
+  stats: ServerStats
+  tpsHistory: TPSData[]
+  cpuHistory: Array<{ timestamp: number; value: number }>
+  memoryHistory: Array<{ timestamp: number; used: number; allocated: number }>
 }
 
 /**
  * 测试连接结果
  */
 export interface TestConnectionResult {
-  success: boolean;
-  message: string;
-  latency?: number;
-}
-
-/**
- * API 错误类
- */
-export class ApiError extends Error {
-  code?: string;
-  details?: unknown;
-
-  constructor(
-    message: string,
-    code?: string,
-    details?: unknown
-  ) {
-    super(message);
-    this.name = 'ApiError';
-    this.code = code;
-    this.details = details;
-  }
+  success: boolean
+  message: string
+  latency?: number
 }
 
 /**
  * 发送 HTTP 请求
  */
+type FetchConfig = {
+  requireAuth?: boolean
+  retryOnAuthError?: boolean
+}
+
+const buildHeaders = (options: RequestInit, accessToken?: string | null) => {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+  const baseHeaders: Record<string, string> = isFormData
+    ? {}
+    : { 'Content-Type': 'application/json' }
+  const merged = {
+    ...baseHeaders,
+    ...(options.headers ?? {}),
+  } as Record<string, string>
+  if (accessToken) {
+    merged.Authorization = `Bearer ${accessToken}`
+  }
+  return merged
+}
+
 async function fetchApi<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  config: FetchConfig = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
+  const url = `${API_BASE_URL}${endpoint}`
+  const tokens = getAuthTokens()
 
-    const data = await response.json() as ApiResponse<T>;
-
-    if (!response.ok || !data.success) {
-      const error = data as ApiErrorResponse;
-      throw new ApiError(
-        error.error?.message || '请求失败',
-        error.error?.code,
-        error.error?.details
-      );
-    }
-
-    return (data as ApiSuccessResponse<T>).data as T;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-    
-    throw new ApiError(
-      error instanceof Error ? error.message : '网络请求失败',
-      'NETWORK_ERROR'
-    );
+  if (config.requireAuth && !tokens?.accessToken) {
+    throw new ApiError('需要登录后访问', 'UNAUTHORIZED')
   }
+
+  const response = await fetch(url, {
+    ...options,
+    headers: buildHeaders(options, tokens?.accessToken),
+  })
+
+  const text = await response.text()
+  const payload = text ? (JSON.parse(text) as ApiResponse<T>) : null
+
+  if (!response.ok || !payload?.success) {
+    const error = payload as ApiErrorResponse | null
+    const errorCode = error?.error?.code
+    const shouldRefresh =
+      config.retryOnAuthError !== false &&
+      tokens?.socketToken &&
+      (response.status === 401 ||
+        errorCode === 'INVALID_TOKEN' ||
+        errorCode === 'UNAUTHORIZED' ||
+        errorCode === 'TOKEN_EXPIRED' ||
+        errorCode === 'MISSING_TOKEN')
+
+    if (shouldRefresh) {
+      try {
+        const refreshed = await refreshTokens(tokens.socketToken)
+        setAuthTokens(refreshed)
+        return fetchApi(endpoint, options, {
+          ...config,
+          retryOnAuthError: false,
+        })
+      } catch (refreshError) {
+        clearAuth()
+        throw refreshError instanceof ApiError
+          ? refreshError
+          : new ApiError('登录状态已失效，请重新登录', 'UNAUTHORIZED')
+      }
+    }
+
+    throw new ApiError(
+      error?.error?.message || '请求失败',
+      error?.error?.code,
+      error?.error?.details
+    )
+  }
+
+  return (payload as ApiSuccessResponse<T>)?.data as T
 }
 
 // ============ 配置管理 API（对接文档 3.1） ============

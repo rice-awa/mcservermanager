@@ -7,6 +7,7 @@ export interface ServerConfig {
   password: string
   timeout?: number
   sparkApiUrl?: string // Spark Mod API 地址
+  serverDir?: string // 服务器目录路径
 }
 
 // 玩家信息类型
@@ -84,4 +85,41 @@ export interface ApiErrorResponse {
     details?: unknown
   }
   timestamp?: Date
+}
+
+export type ApiResponse<T = unknown> =
+  | ApiSuccessResponse<T>
+  | ApiErrorResponse
+
+// 认证相关类型
+export interface AuthTokens {
+  accessToken: string
+  socketToken: string
+  expiresIn: number
+}
+
+export interface AuthUser {
+  id: string
+  username: string
+  role: 'admin' | 'user'
+  createdAt?: Date | string
+}
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface LoginResponse {
+  success: true
+  data: {
+    user: AuthUser
+    tokens: AuthTokens
+  }
+}
+
+export interface TestConnectionResult {
+  success: boolean
+  message: string
+  latency?: number
 }

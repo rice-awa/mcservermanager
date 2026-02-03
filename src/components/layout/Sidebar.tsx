@@ -13,6 +13,9 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useTheme } from '@/hooks/use-theme'
+import { useAuth } from '@/contexts/auth-context'
+import { useServerState } from '@/hooks/use-server'
+import type { ConnectionStatus } from '@/types'
 
 interface SidebarProps {
   open?: boolean
@@ -42,13 +45,43 @@ const menuItems = [
   },
 ]
 
+const statusMeta: Record<
+  ConnectionStatus,
+  { label: string; color: string; dot: string }
+> = {
+  disconnected: {
+    label: '未连接',
+    color: 'text-muted-foreground',
+    dot: 'bg-gray-400',
+  },
+  connecting: {
+    label: '连接中',
+    color: 'text-amber-500',
+    dot: 'bg-amber-500',
+  },
+  connected: {
+    label: '已连接',
+    color: 'text-emerald-500',
+    dot: 'bg-emerald-500',
+  },
+  error: {
+    label: '连接失败',
+    color: 'text-destructive',
+    dot: 'bg-destructive',
+  },
+}
+
 export default function Sidebar({
   open = false,
   onClose = () => {},
 }: SidebarProps) {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
+  const { user, isAuthenticated, logout } = useAuth()
+  const { connectionStatus, statusMessage, activeServerName } = useServerState()
   const isDark = theme === 'dark'
+  const status = statusMeta[connectionStatus]
+  const initials = user?.username?.slice(0, 1).toUpperCase() ?? 'G'
 
   return (
     <aside
@@ -81,10 +114,13 @@ export default function Sidebar({
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">连接状态</span>
-          <Badge variant="outline" className="text-xs">
-            <span className="h-2 w-2 rounded-full bg-gray-400 mr-1.5" />
-            未连接
+          <Badge variant="outline" className={cn('text-xs', status.color)}>
+            <span className={cn('h-2 w-2 rounded-full mr-1.5', status.dot)} />
+            {status.label}
           </Badge>
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          {activeServerName ? `当前服务器：${activeServerName}` : statusMessage}
         </div>
       </div>
 
@@ -118,13 +154,33 @@ export default function Sidebar({
       <div className="p-4 border-t space-y-3">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="text-sm font-medium">A</span>
+            <span className="text-sm font-medium">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">管理员</p>
-            <p className="text-xs text-muted-foreground">admin@mc.com</p>
+            <p className="text-sm font-medium truncate">
+              {isAuthenticated ? user?.username : '未登录'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isAuthenticated ? user?.role : '请先登录'}
+            </p>
           </div>
         </div>
+        {isAuthenticated ? (
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            退出登录
+          </button>
+        ) : (
+          <Link
+            to="/login"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            前往登录
+          </Link>
+        )}
         <button
           type="button"
           onClick={toggleTheme}

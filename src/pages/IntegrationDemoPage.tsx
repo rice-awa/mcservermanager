@@ -8,9 +8,9 @@ import {
   getConfigs, 
   getStats, 
   getPlayers,
-  checkHealth,
-  ApiError 
+  checkHealth
 } from '@/services/api.service'
+import { ApiError } from '@/services/api-error'
 import { socketService } from '@/services/socket.service'
 import type { 
   ServerConfig, 
@@ -67,7 +67,7 @@ export default function IntegrationDemoPage() {
         console.log('[Demo] Player update:', newPlayers);
         setPlayers(newPlayers);
       },
-      onConnectionStatus: (status, message) => {
+      onConnectionStatus: (_serverId, status, message) => {
         console.log('[Demo] Connection status:', status, message);
         setWsStatus(status);
       },

@@ -1,11 +1,17 @@
 import { createBrowserRouter } from 'react-router-dom'
 import MainLayout from '@/components/layout/MainLayout'
+import ProtectedRoute from '@/components/auth/ProtectedRoute'
 import ConsolePage from '@/pages/ConsolePage'
 import DashboardPage from '@/pages/DashboardPage'
 import PlayersPage from '@/pages/PlayersPage'
 import SettingsPage from '@/pages/SettingsPage'
+import LoginPage from '@/pages/LoginPage'
 
 export const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <LoginPage />,
+  },
   {
     path: '/',
     element: <MainLayout />,
@@ -16,7 +22,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'console',
-        element: <ConsolePage />,
+        element: (
+          <ProtectedRoute>
+            <ConsolePage />
+          </ProtectedRoute>
+        ),
       },
       {
         path: 'players',
@@ -24,7 +34,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'settings',
-        element: <SettingsPage />,
+        element: (
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        ),
       },
     ],
   },
