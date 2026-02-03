@@ -70,6 +70,7 @@ export class RconService {
     const existing = this.connections.get(serverId);
     if (existing && existing.status === 'connected') {
       logger.warn(`服务器 ${name} 已连接，跳过重复连接`);
+      this.emitStatusChange(serverId, 'connected');
       return;
     }
 

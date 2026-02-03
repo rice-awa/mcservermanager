@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import type { Player, ApiResponse, PaginatedResponse, PlayerQueryParams } from '../types';
 import { playerService } from '../services/player.service';
+import { rconService } from '../services/rcon.service';
 import { createLogger } from '../utils/logger';
 
 const router = Router();
@@ -34,6 +35,17 @@ router.get('/', async (req: Request, res: Response) => {
         },
       };
       return res.status(400).json(response);
+    }
+
+    if (!rconService.isConnected(serverId)) {
+      const response: ApiResponse = {
+        success: false,
+        error: {
+          code: 'SERVER_NOT_CONNECTED',
+          message: '服务器未连接，请先建立连接',
+        },
+      };
+      return res.status(409).json(response);
     }
 
     const params: PlayerQueryParams = {
@@ -81,6 +93,17 @@ router.get('/count', async (req: Request, res: Response) => {
         },
       };
       return res.status(400).json(response);
+    }
+
+    if (!rconService.isConnected(serverId)) {
+      const response: ApiResponse = {
+        success: false,
+        error: {
+          code: 'SERVER_NOT_CONNECTED',
+          message: '服务器未连接，请先建立连接',
+        },
+      };
+      return res.status(409).json(response);
     }
 
     const count = await playerService.getPlayerCount(serverId);

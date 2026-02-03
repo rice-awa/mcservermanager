@@ -17,6 +17,7 @@ import { createLogger } from '../utils/logger';
 import { rconService } from '../services/rcon.service';
 import { configService } from '../services/config.service';
 import { sparkService } from '../services/spark.service';
+import { statsService } from '../services/stats.service';
 import * as path from 'path';
 import { loadConfig } from '../config';
 
@@ -217,6 +218,9 @@ async function handleServerConnect(
     sparkService.setLogPath(logPath);
     logger.debug(`设置 Spark 日志路径: ${logPath}`);
 
+    // 启动状态采集
+    statsService.startCollecting(config.id, appConfig.stats.updateInterval);
+
     // 状态会通过 onStatusChange 回调广播
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误';
@@ -232,6 +236,9 @@ function handleServerDisconnect(socket: Socket, serverId: string): void {
 
   // 断开 RCON 连接
   rconService.disconnect(serverId);
+
+  // 停止状态采集
+  statsService.stopCollecting(serverId);
 
   // 离开服务器房间
   socket.leave(`server:${serverId}`);
@@ -261,15 +268,6 @@ async function handleConsoleCommand(
   // 发送命令消息
   emitCommandOutput(socket, commandMessage);
 
-  // 同时兼容旧格式
-  socket.emit('console:message', {
-    id: commandMessage.id,
-    serverId,
-    type: 'command',
-    content: command,
-    timestamp: new Date(),
-  });
-
   const result = await rconService.send(serverId, command);
 
   // 创建响应消息（对接文档格式）
@@ -282,15 +280,6 @@ async function handleConsoleCommand(
 
   // 发送响应消息
   emitCommandOutput(socket, outputMessage);
-
-  // 同时兼容旧格式
-  socket.emit('console:message', {
-    id: outputMessage.id,
-    serverId,
-    type: result.success ? 'output' : 'error',
-    content: result.response,
-    timestamp: new Date(),
-  });
 }
 
 /**
@@ -367,6 +356,9 @@ function handleDeleteServer(socket: Socket, serverId: string): void {
   if (rconService.isConnected(serverId)) {
     rconService.disconnect(serverId);
   }
+
+  // 停止状态采集
+  statsService.stopCollecting(serverId);
 
   const deleted = configService.delete(serverId);
   if (deleted) {
