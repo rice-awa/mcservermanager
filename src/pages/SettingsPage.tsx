@@ -86,11 +86,33 @@ export default function SettingsPage() {
   useEffect(() => {
     socketService.connect(undefined, tokens?.socketToken)
 
-    const handleStatus = (data: {
+    const isStatusPayload = (
+      value: unknown
+    ): value is {
       serverId: string
       status: ConnectionStatus
       error?: string
-    }) => {
+    } => {
+      if (!value || typeof value !== 'object') {
+        return false
+      }
+      const data = value as {
+        serverId?: unknown
+        status?: unknown
+        error?: unknown
+      }
+      return (
+        typeof data.serverId === 'string' &&
+        typeof data.status === 'string' &&
+        (data.error === undefined || typeof data.error === 'string')
+      )
+    }
+
+    const handleStatus = (...args: unknown[]) => {
+      const [data] = args
+      if (!isStatusPayload(data)) {
+        return
+      }
       if (data.serverId !== activeServerId) {
         return
       }
