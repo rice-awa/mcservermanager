@@ -1,19 +1,22 @@
 import { Link, useLocation } from 'react-router-dom'
-import { cn } from '@/lib/utils'
-import { 
-  LayoutDashboard, 
-  Terminal, 
-  Users, 
+import {
+  LayoutDashboard,
+  Terminal,
+  Users,
   Settings,
   Server,
-  X
+  X,
+  Sun,
+  Moon,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { useTheme } from '@/hooks/use-theme'
 
 interface SidebarProps {
-  open: boolean
-  onClose: () => void
+  open?: boolean
+  onClose?: () => void
 }
 
 const menuItems = [
@@ -39,8 +42,13 @@ const menuItems = [
   },
 ]
 
-export default function Sidebar({ open, onClose }: SidebarProps) {
+export default function Sidebar({
+  open = false,
+  onClose = () => {},
+}: SidebarProps) {
   const location = useLocation()
+  const { theme, toggleTheme } = useTheme()
+  const isDark = theme === 'dark'
 
   return (
     <aside
@@ -107,7 +115,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       </nav>
 
       {/* 底部用户信息 */}
-      <div className="p-4 border-t">
+      <div className="p-4 border-t space-y-3">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
             <span className="text-sm font-medium">A</span>
@@ -117,6 +125,18 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             <p className="text-xs text-muted-foreground">admin@mc.com</p>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          {isDark ? (
+            <Sun className="h-4 w-4" />
+          ) : (
+            <Moon className="h-4 w-4" />
+          )}
+          {isDark ? '切换到亮色' : '切换到暗色'}
+        </button>
       </div>
     </aside>
   )

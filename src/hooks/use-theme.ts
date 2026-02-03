@@ -14,7 +14,9 @@ function getInitialTheme(): Theme {
     return stored
   }
 
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  const prefersDark =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches
   return prefersDark ? 'dark' : 'light'
 }
 
