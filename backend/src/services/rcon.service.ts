@@ -3,7 +3,7 @@
  * 实现连接管理、命令发送、连接池和断线重连
  */
 import { Rcon } from 'rcon-client';
-import type { ServerConfig, CommandResult, ConnectionStatus } from '../types';
+import type { ServerConfig, ServerConfigInternal, CommandResult, ConnectionStatus, TestConnectionResult } from '../types';
 import { createLogger } from '../utils/logger';
 import { loadConfig } from '../config';
 
@@ -13,7 +13,7 @@ const appConfig = loadConfig();
 // 连接信息接口
 interface RconConnection {
   rcon: Rcon;
-  config: ServerConfig;
+  config: ServerConfigInternal;
   status: ConnectionStatus;
   lastActivity: Date;
   reconnectAttempts: number;
@@ -61,10 +61,10 @@ export class RconService {
   }
 
   /**
-   * 连接到 RCON 服务器
+   * 连接到 RCON 服务器（使用 API 格式配置）
    */
-  async connect(config: ServerConfig): Promise<void> {
-    const { id: serverId, name, host, rconPort, rconPassword } = config;
+  async connect(config: ServerConfig | ServerConfigInternal): Promise<void> {
+    const { id: serverId, name, host, port, password } = config;
 
     // 检查是否已连接
     const existing = this.connections.get(serverId);
@@ -73,15 +73,15 @@ export class RconService {
       return;
     }
 
-    logger.info(`正在连接服务器: ${name} (${host}:${rconPort})`);
+    logger.info(`正在连接服务器: ${name} (${host}:${port})`);
     this.emitStatusChange(serverId, 'connecting');
 
     try {
       const rcon = new Rcon({
         host,
-        port: rconPort,
-        password: rconPassword,
-        timeout: this.timeout,
+        port,
+        password,
+        timeout: config.timeout ?? this.timeout,
       });
 
       // 设置错误处理
@@ -99,10 +99,24 @@ export class RconService {
       // 连接
       await rcon.connect();
 
+      // 转换为内部格式保存
+      const internalConfig: ServerConfigInternal = {
+        id: config.id,
+        name: config.name,
+        host: config.host,
+        port: config.port,
+        password: config.password,
+        timeout: config.timeout,
+        sparkApiUrl: config.sparkApiUrl,
+        enabled: (config as ServerConfigInternal).enabled ?? true,
+        createdAt: (config as ServerConfigInternal).createdAt ?? new Date(),
+        updatedAt: (config as ServerConfigInternal).updatedAt ?? new Date(),
+      };
+
       // 保存连接
       const connection: RconConnection = {
         rcon,
-        config,
+        config: internalConfig,
         status: 'connected',
         lastActivity: new Date(),
         reconnectAttempts: 0,
@@ -196,9 +210,9 @@ export class RconService {
       // 创建新连接
       const rcon = new Rcon({
         host: connection.config.host,
-        port: connection.config.rconPort,
-        password: connection.config.rconPassword,
-        timeout: this.timeout,
+        port: connection.config.port,
+        password: connection.config.password,
+        timeout: connection.config.timeout ?? this.timeout,
       });
 
       rcon.on('error', (error) => {
@@ -387,17 +401,17 @@ export class RconService {
   }
 
   /**
-   * 测试连接
+   * 测试连接（使用 API 格式配置）
    */
-  async testConnection(config: ServerConfig): Promise<{ success: boolean; message: string; latency?: number }> {
+  async testConnection(config: ServerConfig): Promise<TestConnectionResult> {
     const startTime = Date.now();
 
     try {
       const rcon = new Rcon({
         host: config.host,
-        port: config.rconPort,
-        password: config.rconPassword,
-        timeout: this.timeout,
+        port: config.port,
+        password: config.password,
+        timeout: config.timeout ?? this.timeout,
       });
 
       await rcon.connect();

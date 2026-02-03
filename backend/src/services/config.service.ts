@@ -2,17 +2,16 @@
  * 服务器配置管理服务
  * 管理 Minecraft 服务器配置的增删改查
  */
-import type { ServerConfig } from '../types';
+import type { ServerConfig, ServerConfigInternal } from '../types';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('ConfigService');
 
 export class ConfigService {
   // 内存中的配置存储（后续可改为文件或数据库）
-  private configs: Map<string, ServerConfig> = new Map();
+  private configs: Map<string, ServerConfigInternal> = new Map();
 
   constructor() {
-    // 初始化时可以添加默认配置或从文件加载
     this.loadDefaultConfigs();
   }
 
@@ -20,14 +19,20 @@ export class ConfigService {
    * 加载默认配置（示例）
    */
   private loadDefaultConfigs(): void {
-    // 这里可以从文件或环境变量加载默认配置
     logger.info('配置服务初始化完成');
   }
 
   /**
-   * 获取所有配置
+   * 获取所有配置（返回对接文档格式）
    */
   getAll(): ServerConfig[] {
+    return Array.from(this.configs.values()).map(this.toApiConfig);
+  }
+
+  /**
+   * 获取所有配置（带内部字段）
+   */
+  getAllInternal(): ServerConfigInternal[] {
     return Array.from(this.configs.values());
   }
 
@@ -35,19 +40,33 @@ export class ConfigService {
    * 获取单个配置
    */
   get(id: string): ServerConfig | undefined {
+    const config = this.configs.get(id);
+    return config ? this.toApiConfig(config) : undefined;
+  }
+
+  /**
+   * 获取单个配置（带内部字段）
+   */
+  getInternal(id: string): ServerConfigInternal | undefined {
     return this.configs.get(id);
   }
 
   /**
    * 创建配置
    */
-  create(config: Omit<ServerConfig, 'id' | 'createdAt' | 'updatedAt'>): ServerConfig {
+  create(config: Omit<ServerConfig, 'id'>): ServerConfig {
     const id = this.generateId();
     const now = new Date();
 
-    const newConfig: ServerConfig = {
-      ...config,
+    const newConfig: ServerConfigInternal = {
       id,
+      name: config.name,
+      host: config.host,
+      port: config.port,
+      password: config.password,
+      timeout: config.timeout,
+      sparkApiUrl: config.sparkApiUrl,
+      enabled: true,
       createdAt: now,
       updatedAt: now,
     };
@@ -55,20 +74,20 @@ export class ConfigService {
     this.configs.set(id, newConfig);
     logger.info(`创建服务器配置: ${newConfig.name} (${id})`);
 
-    return newConfig;
+    return this.toApiConfig(newConfig);
   }
 
   /**
    * 更新配置
    */
-  update(id: string, updates: Partial<Omit<ServerConfig, 'id' | 'createdAt'>>): ServerConfig | undefined {
+  update(id: string, updates: Partial<Omit<ServerConfig, 'id'>>): ServerConfig | undefined {
     const existing = this.configs.get(id);
     if (!existing) {
       logger.warn(`配置不存在: ${id}`);
       return undefined;
     }
 
-    const updatedConfig: ServerConfig = {
+    const updatedConfig: ServerConfigInternal = {
       ...existing,
       ...updates,
       id: existing.id,
@@ -79,7 +98,7 @@ export class ConfigService {
     this.configs.set(id, updatedConfig);
     logger.info(`更新服务器配置: ${updatedConfig.name} (${id})`);
 
-    return updatedConfig;
+    return this.toApiConfig(updatedConfig);
   }
 
   /**
@@ -108,7 +127,24 @@ export class ConfigService {
    * 获取启用的配置
    */
   getEnabled(): ServerConfig[] {
-    return Array.from(this.configs.values()).filter((c) => c.enabled);
+    return Array.from(this.configs.values())
+      .filter((c) => c.enabled)
+      .map(this.toApiConfig);
+  }
+
+  /**
+   * 转换为 API 格式（隐藏内部字段）
+   */
+  private toApiConfig(config: ServerConfigInternal): ServerConfig {
+    return {
+      id: config.id,
+      name: config.name,
+      host: config.host,
+      port: config.port,
+      password: config.password,
+      timeout: config.timeout,
+      sparkApiUrl: config.sparkApiUrl,
+    };
   }
 
   /**

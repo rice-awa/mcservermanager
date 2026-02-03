@@ -9,6 +9,7 @@ import cors from 'cors';
 import { loadConfig } from './config';
 import { logger, errorHandler, notFoundHandler, createSuccessResponse } from './utils';
 import { setupSocketHandlers } from './handlers';
+import { configRoutes, playerRoutes, statsRoutes } from './routes';
 
 // 加载配置
 const config = loadConfig();
@@ -44,7 +45,7 @@ app.get('/health', (req, res) => {
   }));
 });
 
-// API 路由占位
+// API 信息端点
 app.get('/api', (req, res) => {
   res.json(createSuccessResponse({
     name: 'MC Server Manager API',
@@ -52,10 +53,30 @@ app.get('/api', (req, res) => {
     endpoints: [
       'GET /health - 健康检查',
       'GET /api - API 信息',
+      'GET /api/configs - 获取配置列表',
+      'POST /api/configs - 新建配置',
+      'PUT /api/configs/:id - 更新配置',
+      'DELETE /api/configs/:id - 删除配置',
+      'POST /api/configs/:id/test - 测试连接',
+      'GET /api/players - 获取玩家列表',
+      'GET /api/players/count - 获取玩家数量',
+      'GET /api/stats - 获取状态快照',
+      'GET /api/stats/history - 获取历史数据',
       'WS / - WebSocket 连接',
     ],
   }));
 });
+
+// ============ REST API 路由（对接文档 3 节） ============
+
+// 配置管理 API (对接文档 3.1)
+app.use('/api/configs', configRoutes);
+
+// 玩家管理 API (对接文档 3.2)
+app.use('/api/players', playerRoutes);
+
+// 仪表盘数据 API (对接文档 3.3)
+app.use('/api/stats', statsRoutes);
 
 // 设置 WebSocket 处理器
 setupSocketHandlers(io);
@@ -74,6 +95,7 @@ httpServer.listen(port, host, () => {
   logger.info(`HTTP: http://${host}:${port}`);
   logger.info(`WebSocket: ws://${host}:${port}`);
   logger.info(`健康检查: http://${host}:${port}/health`);
+  logger.info(`API 文档: http://${host}:${port}/api`);
 });
 
 // 优雅关闭

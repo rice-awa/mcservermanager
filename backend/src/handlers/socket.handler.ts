@@ -1,12 +1,25 @@
 /**
  * WebSocket 处理器
  * 处理客户端与服务器之间的实时通信
+ * 与 docs/backend-integration.md 对接文档保持一致
  */
 import type { Server as SocketServer, Socket } from 'socket.io';
-import type { ServerConfig } from '../types';
+import type {
+  ServerConfig,
+  ConsoleMessage,
+  WSMessage,
+  ConnectPayload,
+  ExecuteCommandPayload,
+  CommandOutputPayload,
+  StatsUpdatePayload,
+  PlayerUpdatePayload,
+  ErrorPayload,
+  ConnectionStatus,
+} from '../types';
 import { createLogger } from '../utils/logger';
 import { rconService } from '../services/rcon.service';
 import { configService } from '../services/config.service';
+import { playerService } from '../services/player.service';
 
 const logger = createLogger('SocketHandler');
 
@@ -30,7 +43,33 @@ export function setupSocketHandlers(io: SocketServer): void {
     // 发送当前所有服务器状态
     sendCurrentStatus(socket);
 
-    // 连接服务器事件
+    // ============ 对接文档 4.1 客户端 -> 服务端事件 ============
+
+    /**
+     * connect 事件（对接文档 4.1）
+     * 传入配置 id 或完整配置
+     */
+    socket.on('connect', async (data: WSMessage<ConnectPayload>) => {
+      const { configId } = data.payload;
+      await handleServerConnect(socket, configId);
+    });
+
+    /**
+     * executeCommand 事件（对接文档 4.1）
+     * 发送控制台命令
+     */
+    socket.on('executeCommand', async (data: WSMessage<ExecuteCommandPayload>) => {
+      const serverId = (socket as unknown as { currentServerId?: string }).currentServerId;
+      if (!serverId) {
+        emitError(socket, '未连接到服务器', 'NOT_CONNECTED');
+        return;
+      }
+      await handleConsoleCommand(socket, serverId, data.payload.command);
+    });
+
+    // ============ 兼容旧版事件名称 ============
+
+    // 连接服务器事件（兼容）
     socket.on('server:connect', async (data: { serverId: string; config?: Partial<ServerConfig> }) => {
       await handleServerConnect(socket, data.serverId, data.config);
     });
@@ -40,7 +79,7 @@ export function setupSocketHandlers(io: SocketServer): void {
       handleServerDisconnect(socket, data.serverId);
     });
 
-    // 控制台命令事件
+    // 控制台命令事件（兼容）
     socket.on('console:command', async (data: { serverId: string; command: string }) => {
       await handleConsoleCommand(socket, data.serverId, data.command);
     });
@@ -56,7 +95,7 @@ export function setupSocketHandlers(io: SocketServer): void {
     });
 
     // 添加服务器配置
-    socket.on('servers:add', (data: { config: Omit<ServerConfig, 'id' | 'createdAt' | 'updatedAt'> }) => {
+    socket.on('servers:add', (data: { config: Omit<ServerConfig, 'id'> }) => {
       handleAddServer(socket, data.config);
     });
 
@@ -90,6 +129,22 @@ export function setupSocketHandlers(io: SocketServer): void {
       logger.error(`Socket 错误: ${error.message}`, { socketId: socket.id });
     });
   });
+}
+
+/**
+ * 发送错误消息（对接文档格式）
+ */
+function emitError(socket: Socket, message: string, code?: string): void {
+  const payload: ErrorPayload = { message, code };
+  socket.emit('error', { type: 'error', payload });
+}
+
+/**
+ * 发送命令输出（对接文档 4.2）
+ */
+function emitCommandOutput(socket: Socket, message: ConsoleMessage): void {
+  const payload: CommandOutputPayload = { message };
+  socket.emit('commandOutput', { type: 'commandOutput', payload });
 }
 
 /**
@@ -127,28 +182,26 @@ async function handleServerConnect(
     let config = configService.get(serverId);
 
     if (!config && configOverride) {
-      // 如果没有配置但提供了配置信息，创建临时配置
-      const createConfig: Omit<ServerConfig, 'id' | 'createdAt' | 'updatedAt'> = {
+      // 如果没有配置但提供了配置信息，创建新配置
+      const createConfig: Omit<ServerConfig, 'id'> = {
         name: configOverride.name ?? '未命名服务器',
         host: configOverride.host ?? 'localhost',
-        rconPort: configOverride.rconPort ?? 25575,
-        rconPassword: configOverride.rconPassword ?? '',
-        enabled: true,
+        port: configOverride.port ?? 25575,
+        password: configOverride.password ?? '',
+        timeout: configOverride.timeout,
+        sparkApiUrl: configOverride.sparkApiUrl,
       };
-      if (configOverride.sparkApiUrl) {
-        createConfig.sparkApiUrl = configOverride.sparkApiUrl;
-      }
       config = configService.create(createConfig);
       serverId = config.id;
     }
 
     if (!config) {
-      socket.emit('error', {
-        message: `服务器配置不存在: ${serverId}`,
-        code: 'CONFIG_NOT_FOUND',
-      });
+      emitError(socket, `服务器配置不存在: ${serverId}`, 'CONFIG_NOT_FOUND');
       return;
     }
+
+    // 保存当前连接的服务器ID
+    (socket as unknown as { currentServerId: string }).currentServerId = config.id;
 
     // 加入服务器房间
     socket.join(`server:${config.id}`);
@@ -159,10 +212,7 @@ async function handleServerConnect(
     // 状态会通过 onStatusChange 回调广播
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误';
-    socket.emit('error', {
-      message: `连接服务器失败: ${message}`,
-      code: 'CONNECTION_ERROR',
-    });
+    emitError(socket, `连接服务器失败: ${message}`, 'CONNECTION_ERROR');
   }
 }
 
@@ -177,6 +227,9 @@ function handleServerDisconnect(socket: Socket, serverId: string): void {
 
   // 离开服务器房间
   socket.leave(`server:${serverId}`);
+
+  // 清除当前服务器ID
+  delete (socket as unknown as { currentServerId?: string }).currentServerId;
 }
 
 /**
@@ -189,9 +242,20 @@ async function handleConsoleCommand(
 ): Promise<void> {
   logger.debug(`执行命令 [${serverId}]: ${command}`);
 
-  // 发送命令消息
-  socket.emit('console:message', {
+  // 创建命令消息（对接文档格式）
+  const commandMessage: ConsoleMessage = {
     id: generateId(),
+    timestamp: Date.now(),
+    type: 'command',
+    content: command,
+  };
+
+  // 发送命令消息
+  emitCommandOutput(socket, commandMessage);
+
+  // 同时兼容旧格式
+  socket.emit('console:message', {
+    id: commandMessage.id,
     serverId,
     type: 'command',
     content: command,
@@ -200,11 +264,22 @@ async function handleConsoleCommand(
 
   const result = await rconService.send(serverId, command);
 
-  // 发送响应消息
-  socket.emit('console:message', {
+  // 创建响应消息（对接文档格式）
+  const outputMessage: ConsoleMessage = {
     id: generateId(),
+    timestamp: Date.now(),
+    type: result.success ? 'output' : 'error',
+    content: result.response,
+  };
+
+  // 发送响应消息
+  emitCommandOutput(socket, outputMessage);
+
+  // 同时兼容旧格式
+  socket.emit('console:message', {
+    id: outputMessage.id,
     serverId,
-    type: result.success ? 'response' : 'error',
+    type: result.success ? 'output' : 'error',
     content: result.response,
     timestamp: new Date(),
   });
@@ -217,22 +292,17 @@ async function handleTestConnection(
   socket: Socket,
   config: Partial<ServerConfig>
 ): Promise<void> {
-  logger.info(`测试连接: ${config.host}:${config.rconPort}`);
+  logger.info(`测试连接: ${config.host}:${config.port}`);
 
   const testConfig: ServerConfig = {
     id: 'test',
     name: config.name ?? 'Test',
     host: config.host ?? 'localhost',
-    rconPort: config.rconPort ?? 25575,
-    rconPassword: config.rconPassword ?? '',
-    enabled: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    port: config.port ?? 25575,
+    password: config.password ?? '',
+    timeout: config.timeout,
+    sparkApiUrl: config.sparkApiUrl,
   };
-
-  if (config.sparkApiUrl) {
-    testConfig.sparkApiUrl = config.sparkApiUrl;
-  }
 
   const result = await rconService.testConnection(testConfig);
 
@@ -255,7 +325,7 @@ function handleServersList(socket: Socket): void {
  */
 function handleAddServer(
   socket: Socket,
-  config: Omit<ServerConfig, 'id' | 'createdAt' | 'updatedAt'>
+  config: Omit<ServerConfig, 'id'>
 ): void {
   const newConfig = configService.create(config);
   socket.emit('servers:added', { server: newConfig });
@@ -277,10 +347,7 @@ function handleUpdateServer(
     socket.emit('servers:updated', { server: updated });
     socket.broadcast.emit('servers:updated', { server: updated });
   } else {
-    socket.emit('error', {
-      message: `服务器配置不存在: ${serverId}`,
-      code: 'CONFIG_NOT_FOUND',
-    });
+    emitError(socket, `服务器配置不存在: ${serverId}`, 'CONFIG_NOT_FOUND');
   }
 }
 
@@ -298,10 +365,7 @@ function handleDeleteServer(socket: Socket, serverId: string): void {
     socket.emit('servers:deleted', { serverId });
     socket.broadcast.emit('servers:deleted', { serverId });
   } else {
-    socket.emit('error', {
-      message: `服务器配置不存在: ${serverId}`,
-      code: 'CONFIG_NOT_FOUND',
-    });
+    emitError(socket, `服务器配置不存在: ${serverId}`, 'CONFIG_NOT_FOUND');
   }
 }
 

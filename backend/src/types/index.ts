@@ -1,32 +1,231 @@
 /**
  * 后端类型定义
+ * 与 docs/backend-integration.md 对接文档保持一致
  */
 
-// 服务器配置
+// ============ 对接文档规范类型 ============
+
+/**
+ * 服务器配置（与对接文档 3.1 一致）
+ */
 export interface ServerConfig {
   id: string;
   name: string;
   host: string;
-  rconPort: number;
-  rconPassword: string;
-  sparkApiUrl?: string;
-  enabled: boolean;
+  port: number;           // RCON 端口
+  password: string;       // RCON 密码
+  timeout?: number | undefined;       // 连接超时（毫秒）
+  sparkApiUrl?: string | undefined;   // Spark Mod API 地址
+}
+
+/**
+ * 内部存储的服务器配置（带时间戳）
+ */
+export interface ServerConfigInternal extends ServerConfig {
   createdAt: Date;
   updatedAt: Date;
+  enabled: boolean;
+  timeout?: number | undefined;
+  sparkApiUrl?: string | undefined;
 }
 
-// 连接状态
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'error';
-
-// 服务器连接信息
-export interface ServerConnection {
-  serverId: string;
-  status: ConnectionStatus;
-  lastConnected?: Date;
-  error?: string;
+/**
+ * 玩家信息（与对接文档 2 一致）
+ */
+export interface Player {
+  id: string;
+  name: string;
+  uuid: string;
+  onlineTime: number;     // 在线时间（秒）
+  ping: number;           // 延迟（毫秒）
+  position?: {
+    x: number;
+    y: number;
+    z: number;
+    dimension: string;
+  };
 }
 
-// RCON 命令执行结果
+/**
+ * 服务器状态（与对接文档 2 一致）
+ */
+export interface ServerStats {
+  tps: number;
+  cpu: number;            // CPU 使用率百分比
+  memory: {
+    used: number;         // 已使用内存（MB）
+    max: number;          // 最大内存（MB）
+    allocated: number;    // 已分配内存（MB）
+  };
+  onlinePlayers: number;
+  maxPlayers: number;
+  loadedChunks: number;
+  version: string;
+  gamemode: string;
+  difficulty: string;
+}
+
+/**
+ * TPS 数据（与对接文档 2 一致）
+ */
+export interface TPSData {
+  timestamp: number;
+  tps: number;
+}
+
+/**
+ * CPU 历史数据
+ */
+export interface CPUData {
+  timestamp: number;
+  value: number;
+}
+
+/**
+ * 内存历史数据
+ */
+export interface MemoryHistoryData {
+  timestamp: number;
+  used: number;
+  allocated: number;
+}
+
+/**
+ * 控制台消息（与对接文档 2 一致）
+ */
+export interface ConsoleMessage {
+  id: string;
+  timestamp: number;
+  type: 'system' | 'command' | 'output' | 'error' | 'chat' | 'join' | 'leave';
+  content: string;
+  sender?: string;
+}
+
+/**
+ * 连接状态（与对接文档 2 一致）
+ */
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+// ============ WebSocket 消息类型（与对接文档 4 一致） ============
+
+/**
+ * WebSocket 消息基础结构
+ */
+export interface WSMessage<T = unknown> {
+  type: string;
+  payload: T;
+}
+
+/**
+ * 连接请求 payload
+ */
+export interface ConnectPayload {
+  configId: string;
+}
+
+/**
+ * 执行命令 payload
+ */
+export interface ExecuteCommandPayload {
+  command: string;
+}
+
+/**
+ * 命令输出 payload
+ */
+export interface CommandOutputPayload {
+  message: ConsoleMessage;
+}
+
+/**
+ * 状态更新 payload
+ */
+export interface StatsUpdatePayload {
+  stats: ServerStats;
+}
+
+/**
+ * 玩家更新 payload
+ */
+export interface PlayerUpdatePayload {
+  items: Player[];
+}
+
+/**
+ * 错误 payload
+ */
+export interface ErrorPayload {
+  message: string;
+  code?: string | undefined;
+}
+
+// ============ REST API 响应类型（与对接文档 3、5 一致） ============
+
+/**
+ * API 成功响应
+ */
+export interface ApiSuccessResponse<T = unknown> {
+  success: true;
+  data?: T;
+  message?: string;
+  timestamp?: Date;
+}
+
+/**
+ * API 错误响应（与对接文档 5 一致）
+ */
+export interface ApiErrorResponse {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+  timestamp?: Date;
+}
+
+/**
+ * 通用 API 响应
+ */
+export type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+/**
+ * 分页响应（与对接文档 3.2 一致）
+ */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * 仪表盘数据响应（与对接文档 3.3 一致）
+ */
+export interface DashboardStatsResponse {
+  stats: ServerStats;
+  tpsHistory: TPSData[];
+  cpuHistory: CPUData[];
+  memoryHistory: MemoryHistoryData[];
+}
+
+/**
+ * 玩家查询参数（与对接文档 3.2 一致）
+ */
+export interface PlayerQueryParams {
+  q?: string;                           // 按名称搜索
+  status?: 'online' | 'offline' | 'all';
+  page?: number;
+  pageSize?: number;
+  sortBy?: 'name' | 'onlineTime' | 'ping';
+  sortOrder?: 'asc' | 'desc';
+}
+
+// ============ 内部使用类型 ============
+
+/**
+ * RCON 命令执行结果
+ */
 export interface CommandResult {
   success: boolean;
   response: string;
@@ -34,81 +233,20 @@ export interface CommandResult {
   executionTime: number;
 }
 
-// 控制台消息
-export interface ConsoleMessage {
-  id: string;
+/**
+ * 服务器连接信息
+ */
+export interface ServerConnection {
   serverId: string;
-  type: 'command' | 'response' | 'error' | 'system';
-  content: string;
-  timestamp: Date;
+  status: ConnectionStatus;
+  lastConnected?: Date;
+  lastActivity?: Date;
+  error?: string;
 }
 
-// TPS 数据
-export interface TPSData {
-  current: number;
-  avg1m: number;
-  avg5m: number;
-  avg15m: number;
-  timestamp: Date;
-}
-
-// 内存数据
-export interface MemoryData {
-  used: number;
-  max: number;
-  free: number;
-  percentage: number;
-  timestamp: Date;
-}
-
-// CPU 数据
-export interface CPUData {
-  processUsage: number;
-  systemUsage: number;
-  timestamp: Date;
-}
-
-// 服务器状态
-export interface ServerStats {
-  serverId: string;
-  online: boolean;
-  playerCount: number;
-  maxPlayers: number;
-  tps?: TPSData;
-  memory?: MemoryData;
-  cpu?: CPUData;
-  uptime?: number;
-  timestamp: Date;
-}
-
-// 玩家信息
-export interface PlayerInfo {
-  uuid: string;
-  name: string;
-  displayName?: string;
-  ping?: number;
-  joinedAt?: Date;
-  gameMode?: string;
-  world?: string;
-}
-
-// WebSocket 事件类型
-export interface SocketEvents {
-  // 客户端 -> 服务器
-  'server:connect': { serverId: string };
-  'server:disconnect': { serverId: string };
-  'console:command': { serverId: string; command: string };
-  'stats:subscribe': { serverId: string };
-  'stats:unsubscribe': { serverId: string };
-
-  // 服务器 -> 客户端
-  'server:status': ServerConnection;
-  'console:message': ConsoleMessage;
-  'stats:update': ServerStats;
-  'error': { message: string; code?: string };
-}
-
-// 应用配置
+/**
+ * 应用配置
+ */
 export interface AppConfig {
   server: {
     port: number;
@@ -129,10 +267,14 @@ export interface AppConfig {
   };
 }
 
-// 日志级别
+/**
+ * 日志级别
+ */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-// 日志条目
+/**
+ * 日志条目
+ */
 export interface LogEntry {
   level: LogLevel;
   message: string;
@@ -141,31 +283,11 @@ export interface LogEntry {
   data?: unknown;
 }
 
-// API 响应格式
-export interface ApiResponse<T = unknown> {
+/**
+ * 连接测试结果
+ */
+export interface TestConnectionResult {
   success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-  timestamp: Date;
-}
-
-// 分页参数
-export interface PaginationParams {
-  page: number;
-  limit: number;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-}
-
-// 分页响应
-export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+  message: string;
+  latency?: number;
 }

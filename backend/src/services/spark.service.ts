@@ -2,14 +2,25 @@
  * Spark API 服务 - 占位文件
  * 将在后续步骤中实现
  */
-import type { TPSData, MemoryData, CPUData } from '../types';
+import type { TPSData, CPUData } from '../types';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('SparkService');
 
+/**
+ * Spark 内部内存数据
+ */
+interface SparkMemoryData {
+  used: number;
+  max: number;
+  free: number;
+  percentage: number;
+  timestamp: number;
+}
+
 export interface SparkReport {
   tps: TPSData;
-  memory: MemoryData;
+  memory: SparkMemoryData;
   cpu: CPUData;
 }
 
@@ -30,14 +41,11 @@ export class SparkService {
   async getReport(): Promise<SparkReport> {
     logger.debug('获取 Spark 性能报告');
     // TODO: 实现 Spark API 调用
-    const now = new Date();
+    const now = Date.now();
     return {
       tps: {
-        current: 20,
-        avg1m: 20,
-        avg5m: 20,
-        avg15m: 20,
         timestamp: now,
+        tps: 20,
       },
       memory: {
         used: 2048,
@@ -47,9 +55,8 @@ export class SparkService {
         timestamp: now,
       },
       cpu: {
-        processUsage: 25,
-        systemUsage: 40,
         timestamp: now,
+        value: 25,
       },
     };
   }
@@ -65,7 +72,7 @@ export class SparkService {
   /**
    * 获取内存数据
    */
-  async getMemory(): Promise<MemoryData> {
+  async getMemory(): Promise<SparkMemoryData> {
     const report = await this.getReport();
     return report.memory;
   }
